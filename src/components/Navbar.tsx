@@ -1,15 +1,33 @@
 'use client';
 
 import React from 'react';
-import { Camera, Sparkles, Phone, MessageCircle, Heart, LogIn, Lock, Globe, Gift } from 'lucide-react';
-import { StudioContactConfig, CustomerUser } from '@/types';
+import {
+  Camera,
+  Sparkles,
+  Phone,
+  MessageCircle,
+  Heart,
+  LogIn,
+  Lock,
+  Globe,
+  Gift,
+  Images,
+  Instagram,
+  Youtube,
+  Facebook,
+  Building2,
+} from 'lucide-react';
+import { StudioContactConfig, CustomerUser, StudioUser } from '@/types';
 
 interface NavbarProps {
-  activeTab: 'studio' | 'offers' | 'services';
-  setActiveTab: (tab: 'studio' | 'offers' | 'services') => void;
+  activeTab: 'studio' | 'offers' | 'services' | 'gallery';
+  setActiveTab: (tab: 'studio' | 'offers' | 'services' | 'gallery') => void;
   openCustomerAuthModal: () => void;
   customerUser: CustomerUser | null;
   onCustomerLogout: () => void;
+  studioUser?: StudioUser | null;
+  openStudioAuthModal?: () => void;
+  onStudioLogout?: () => void;
   studioContact: StudioContactConfig;
   language: 'en' | 'ml';
   onToggleLanguage: () => void;
@@ -21,6 +39,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   openCustomerAuthModal,
   customerUser,
   onCustomerLogout,
+  studioUser,
+  openStudioAuthModal,
+  onStudioLogout,
   studioContact,
   language,
   onToggleLanguage,
@@ -29,21 +50,77 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 shadow-xs">
-      {/* Top Bar for Dynamic Studio Destination, Offers & Contact */}
+      {/* Top Bar for Dynamic Studio Destination, Offers & Social Links (User Requirement) */}
       <div className="bg-gradient-to-r from-amber-700 via-rosewood-700 to-amber-800 text-amber-50 text-xs py-1.5 px-4">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="bg-amber-400 text-stone-900 font-extrabold px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider">
-              Studio
-            </span>
+            {studioUser ? (
+              <span className="bg-amber-400 text-stone-950 font-black px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider flex items-center gap-1.5 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                {isMl ? 'സ്റ്റുഡിയോ പോർട്ടൽ സജീവം' : 'Studio Portal Active'}
+              </span>
+            ) : customerUser ? (
+              <span className="bg-emerald-400 text-stone-950 font-black px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider flex items-center gap-1.5 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-stone-950 animate-pulse"></span>
+                {isMl ? 'കസ്റ്റമർ ലോഗിൻ സജീവം' : 'Customer Active'}
+              </span>
+            ) : (
+              <span className="bg-amber-400 text-stone-900 font-extrabold px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider">
+                Studio
+              </span>
+            )}
             <span className="font-medium truncate max-w-xs sm:max-w-md">
-              {studioContact.destination} • {isMl ? 'ഫ്രെയിം ലൂ വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫി & സിനിമാറ്റോഗ്രാഫി' : 'Framelu Wedding Photography & Films'}
+              {studioUser
+                ? `🏢 ${studioUser.studioName} (${studioUser.place}) • Partner Mode`
+                : customerUser
+                ? `👤 ${customerUser.name} • ${customerUser.place || customerUser.phone}`
+                : `${studioContact.destination} • ${isMl ? 'ഫ്രെയിം ലൂ വെഡ്ഡിംഗ് കമ്പനി' : 'Framelu Wedding Photography & Films'}`}
             </span>
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-medium">
+          <div className="flex items-center gap-3.5 text-xs font-medium">
+            {/* Social Media Links (Instagram, YouTube, Facebook) */}
+            {studioContact.instagram && (
+              <a
+                href={studioContact.instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-white transition opacity-90 hover:opacity-100"
+                title="Follow on Instagram"
+              >
+                <Instagram className="w-3.5 h-3.5 text-pink-300" />
+                <span className="hidden sm:inline">Instagram</span>
+              </a>
+            )}
+
+            {studioContact.youtube && (
+              <a
+                href={studioContact.youtube}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-white transition opacity-90 hover:opacity-100"
+                title="Watch on YouTube"
+              >
+                <Youtube className="w-3.5 h-3.5 text-red-300" />
+                <span className="hidden sm:inline">YouTube</span>
+              </a>
+            )}
+
+            {studioContact.facebook && (
+              <a
+                href={studioContact.facebook}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 hover:text-white transition opacity-90 hover:opacity-100"
+                title="Follow on Facebook"
+              >
+                <Facebook className="w-3.5 h-3.5 text-blue-300" />
+                <span className="hidden sm:inline">Facebook</span>
+              </a>
+            )}
+
             <a
-              href={`https://wa.me/${studioContact.whatsapp}?text=${encodeURIComponent('Hello Framelu Wedding Company, I am interested in Wedding Photography & Studio Booking')}`}
+              href={`https://wa.me/${studioContact.whatsapp || '916238747722'}?text=${encodeURIComponent('Hello Framelu Wedding Company, I am interested in Wedding Photography & Studio Booking')}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 hover:text-white transition"
@@ -52,11 +129,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>WhatsApp</span>
             </a>
             <a
-              href={`tel:${studioContact.phone}`}
+              href={`tel:${studioContact.phone || '+91 6238747722'}`}
               className="flex items-center gap-1.5 hover:text-white transition"
             >
               <Phone className="w-3.5 h-3.5 text-amber-300" />
-              <span>{studioContact.phone}</span>
+              <span className="hidden sm:inline">{studioContact.phone || '+91 6238747722'}</span>
             </a>
           </div>
         </div>
@@ -96,7 +173,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Camera className="w-4 h-4" />
-            <span>{isMl ? 'കസ്റ്റം പാക്കേജ്' : 'Custom Package'}</span>
+            <span>{isMl ? 'ഫോട്ടോഷൂട്ട് & പാക്കേജ്' : 'Photoshoots & Custom'}</span>
           </button>
 
           <button
@@ -122,15 +199,135 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Sparkles className="w-4 h-4 text-amber-500" />
             <span>{isMl ? 'മറ്റ് സർവീസുകൾ' : 'Other Services'}</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('gallery')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition ${
+              activeTab === 'gallery'
+                ? 'bg-white text-amber-800 shadow-sm border border-stone-200/60'
+                : 'text-stone-600 hover:text-stone-900'
+            }`}
+          >
+            <Images className="w-4 h-4 text-amber-600" />
+            <span>{isMl ? 'ഗാലറി & വർക്കുകൾ' : 'Gallery & Works'}</span>
+          </button>
         </nav>
 
-        {/* Right Section: Language Switcher & Customer Sign In */}
-        <div className="flex items-center gap-2.5">
-          {/* Language Switcher Toggle (User specifically requested Malayalam <-> English switch) */}
+        {/* Right Section: Studio Partner, Language Switcher & Customer Sign In */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Active Studio Partner Login Highlight */}
+          {studioUser ? (
+            <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-stone-950 p-1 pl-2.5 pr-2 rounded-2xl shadow-md border-2 border-amber-300 ring-2 ring-amber-400/40">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-xl bg-stone-950 text-amber-300 flex items-center justify-center shrink-0 shadow-inner">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div className="text-left leading-tight min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-stone-950 text-amber-300 px-1 py-0.5 rounded">
+                      {isMl ? 'സ്റ്റുഡിയോ ലോഗിൻ' : 'Studio Portal'}
+                    </span>
+                  </div>
+                  <p className="text-xs font-black text-stone-950 truncate max-w-[100px] sm:max-w-[150px]">
+                    {studioUser.studioName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onStudioLogout}
+                className="text-[10px] font-black bg-stone-950 text-white hover:bg-stone-800 px-2 py-1 rounded-xl transition cursor-pointer shrink-0"
+                title="Logout from Studio Portal"
+              >
+                {isMl ? 'ലോഗ് ഔട്ട്' : 'Logout'}
+              </button>
+            </div>
+          ) : customerUser ? (
+            /* Active Customer Login Highlight */
+            <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 border-2 border-emerald-500 text-emerald-950 p-1 pl-2.5 pr-2 rounded-2xl shadow-md ring-2 ring-emerald-400/30">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
+                  {customerUser.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="text-left leading-tight min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white px-1 py-0.5 rounded">
+                      {isMl ? 'കസ്റ്റമർ ലോഗിൻ' : 'Customer Active'}
+                    </span>
+                  </div>
+                  <p className="text-xs font-black text-stone-900 truncate max-w-[100px] sm:max-w-[140px]">
+                    {customerUser.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onCustomerLogout}
+                className="text-[10px] font-black bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-2 py-1 rounded-xl transition cursor-pointer shrink-0"
+                title="Customer Logout"
+              >
+                {isMl ? 'ലോഗ് ഔട്ട്' : 'Logout'}
+              </button>
+            </div>
+          ) : (
+            /* Neither Logged In: Show both options clearly */
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {openStudioAuthModal && (
+                <button
+                  type="button"
+                  onClick={openStudioAuthModal}
+                  className="flex items-center gap-1.5 bg-stone-100 hover:bg-amber-100 hover:border-amber-300 text-stone-800 text-xs font-bold px-3 py-2 rounded-xl transition border border-stone-200 cursor-pointer"
+                  title="Studio Partner Portal"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline">{isMl ? 'സ്റ്റുഡിയോ പോർട്ടൽ' : 'Studio Portal'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={openCustomerAuthModal}
+                className="flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs sm:text-sm font-bold px-3 sm:px-4 py-2 rounded-xl shadow-xs transition hover:shadow-md cursor-pointer"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>{isMl ? 'കസ്റ്റമർ ലോഗിൻ' : 'Customer Sign In'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Quick Switch to Studio Portal when Customer is logged in */}
+          {customerUser && openStudioAuthModal && (
+            <button
+              type="button"
+              onClick={openStudioAuthModal}
+              className="hidden lg:flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+              title={isMl ? 'സ്റ്റുഡിയോ പോർട്ടലിലേക്ക് മാറുക' : 'Switch to Studio Portal'}
+            >
+              <Building2 className="w-3.5 h-3.5 text-amber-700" />
+              <span>{isMl ? 'സ്റ്റുഡിയോ പോർട്ടൽ' : 'Studio Portal'}</span>
+            </button>
+          )}
+
+          {/* Quick Switch to Customer Sign In when Studio is logged in */}
+          {studioUser && (
+            <button
+              type="button"
+              onClick={openCustomerAuthModal}
+              className="hidden lg:flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+              title={isMl ? 'കസ്റ്റമർ ലോഗിനിലേക്ക് മാറുക' : 'Switch to Customer Login'}
+            >
+              <LogIn className="w-3.5 h-3.5 text-emerald-700" />
+              <span>{isMl ? 'കസ്റ്റമർ ലോഗിൻ' : 'Customer Login'}</span>
+            </button>
+          )}
+
+          {/* Language Switcher Toggle */}
           <button
             type="button"
             onClick={onToggleLanguage}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 font-bold text-xs transition shadow-2xs"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 font-bold text-xs transition shadow-2xs"
             title="Switch Language / ഭാഷ മാറ്റുക"
           >
             <Globe className="w-3.5 h-3.5 text-amber-600" />
@@ -138,33 +335,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-stone-300">/</span>
             <span className={language === 'en' ? 'text-amber-800 font-black' : 'text-stone-400'}>EN</span>
           </button>
-
-          {/* Customer User Account / Sign In */}
-          {customerUser ? (
-            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 py-1.5 px-3 rounded-2xl">
-              <div className="w-7 h-7 rounded-full bg-amber-600 text-white flex items-center justify-center text-xs font-bold">
-                {customerUser.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="hidden sm:block text-left">
-                <p className="text-xs font-bold text-stone-900 leading-tight">{customerUser.name}</p>
-                <p className="text-[10px] text-stone-500">{customerUser.place || customerUser.phone}</p>
-              </div>
-              <button
-                onClick={onCustomerLogout}
-                className="text-xs text-rose-600 hover:text-rose-700 font-bold ml-1 pl-2 border-l border-amber-200"
-              >
-                {isMl ? 'ലോഗൗട്ട്' : 'Logout'}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={openCustomerAuthModal}
-              className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs sm:text-sm font-bold px-3.5 sm:px-4 py-2 rounded-xl shadow-xs transition hover:shadow-md"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>{isMl ? 'കസ്റ്റമർ സൈൻ-ഇൻ' : 'Customer Sign In'}</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -179,7 +349,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           }`}
         >
           <Camera className="w-3.5 h-3.5" />
-          <span>{isMl ? 'സ്റ്റുഡിയോ' : 'Studio'}</span>
+          <span>{isMl ? 'ഫോട്ടോഷൂട്ട്' : 'Photoshoots'}</span>
         </button>
 
         <button
@@ -204,6 +374,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
           <span>{isMl ? 'സർവീസുകൾ' : 'Services'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('gallery')}
+          className={`flex-1 py-2.5 text-center border-b-2 flex items-center justify-center gap-1.5 ${
+            activeTab === 'gallery'
+              ? 'border-amber-600 text-amber-800 bg-white'
+              : 'border-transparent text-stone-600'
+          }`}
+        >
+          <Images className="w-3.5 h-3.5 text-amber-600" />
+          <span>{isMl ? 'ഗാലറി' : 'Gallery'}</span>
         </button>
       </div>
     </header>

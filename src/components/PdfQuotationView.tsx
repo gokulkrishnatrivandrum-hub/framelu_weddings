@@ -1,7 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
-import { CustomerLead, SideSelection, EventCrewConfig, EventId, DeliverablesConfig, StudioContactConfig, CustomPrintItem } from '@/types';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  CustomerLead,
+  SideSelection,
+  EventCrewConfig,
+  EventId,
+  DeliverablesConfig,
+  StudioContactConfig,
+  CustomPrintItem,
+  SelectedOtherService,
+  CouponCode,
+  StudioUser,
+} from '@/types';
 import { CalculationResult } from '@/utils/calculator';
 import { KERALA_EVENTS, DEFAULT_CUSTOM_PRINTS } from '@/constants/defaults';
 import {
@@ -31,6 +42,8 @@ import {
   Check,
   Send,
   ExternalLink,
+  Tag,
+  Building2,
 } from 'lucide-react';
 
 interface PdfQuotationViewProps {
@@ -45,6 +58,9 @@ interface PdfQuotationViewProps {
   brideEvents?: Record<EventId, EventCrewConfig>;
   deliverables?: DeliverablesConfig;
   customPrintItems?: CustomPrintItem[];
+  selectedServices?: SelectedOtherService[];
+  appliedCoupon?: CouponCode | null;
+  studioUser?: StudioUser | null;
 }
 
 export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
@@ -54,8 +70,8 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
   side = lead.side || 'both',
   calculation,
   studioContact = {
-    phone: '+91 98765 43210',
-    whatsapp: '919876543210',
+    phone: '+91 6238747722',
+    whatsapp: '916238747722',
     destination: 'കായംകുളം, ആലപ്പുഴ, കേരളം',
     email: 'frameluweddings@gmail.com',
   },
@@ -64,7 +80,11 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
   brideEvents = lead.brideEvents,
   deliverables = lead.deliverables,
   customPrintItems = DEFAULT_CUSTOM_PRINTS,
+  selectedServices = lead.selectedServices || [],
+  appliedCoupon,
+  studioUser,
 }) => {
+
   const isMl = language === 'ml';
 
   const [isDownloading, setIsDownloading] = useState(false);
@@ -103,16 +123,42 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
     }, 1500);
   };
 
-  // Tax calculation (GST 18%)
-  const baseSubtotal = calculation.totalPrice || 0;
-  const taxRate = 0.18;
-  const taxAmount = Math.round(baseSubtotal * taxRate);
-  const grandTotalWithTax = baseSubtotal + taxAmount;
+  const isStandalone = lead.leadType === 'standalone_photoshoot' && !!lead.photoshootDetails;
+  const shootDetails = isStandalone ? lead.photoshootDetails : undefined;
 
-  // Milestone splits
+  // Financial calculations with coupon code discounts (Requirement 3)
+  const baseSubtotal = isStandalone
+    ? (shootDetails?.totalPrice || lead.totalPrice || calculation.totalPrice || 0)
+    : (calculation.totalPrice || lead.totalPrice || 0);
+
+  const couponDiscountPercentage = appliedCoupon?.discountPercentage || 0;
+  const couponDiscountAmount = couponDiscountPercentage > 0
+    ? Math.round((baseSubtotal * couponDiscountPercentage) / 100)
+    : 0;
+  const discountedSubtotal = Math.max(0, baseSubtotal - couponDiscountAmount);
+  const taxRate = 0.18;
+  const taxAmount = Math.round(discountedSubtotal * taxRate);
+  const grandTotalWithTax = discountedSubtotal + taxAmount;
+
+  // Milestone splits based on net grand total
   const advanceAmount = Math.round(grandTotalWithTax * 0.25);
   const shootCompleteAmount = Math.round(grandTotalWithTax * 0.50);
   const finalDeliveryAmount = grandTotalWithTax - advanceAmount - shootCompleteAmount;
+
+  // Dynamic Studio Partner Branding vs Default Framelu Wedding Company (Requirement 6)
+  const displayBrandName = studioUser?.studioName
+    ? studioUser.studioName.toUpperCase()
+    : 'FRAMELU WEDDING COMPANY';
+  const displaySubheader = isStandalone
+    ? (shootDetails?.titleMl ? `${shootDetails.titleMl} (${shootDetails.titleEn || ''})` : isMl ? 'പ്രൊഫഷണൽ ഫോട്ടോഷൂട്ട് എസ്റ്റിമേറ്റ്' : 'Professional Photoshoot & Cinema Estimate')
+    : studioUser?.studioName
+    ? (isMl ? 'പ്രൊഫഷണൽ വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫിയും ഫിലിംസും' : 'Professional Wedding Photography, Cinematography & Keepsake Albums')
+    : (isMl ? 'പ്രീമിയം വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫിയും ഫിലിംസും' : 'Premium Wedding Photography, Cinematography & Keepsake Albums');
+  const displayLocation = studioUser?.place || studioUser?.address || studioContact.destination;
+  const displayPhone = studioUser?.phone || studioContact.phone || '+91 6238747722';
+  const displayEmail = studioUser?.email || studioContact.email || 'frameluweddings@gmail.com';
+  const displaySignatory = studioUser?.studioName || 'FRAMELU WEDDING COMPANY';
+  const targetWhatsappNumber = studioContact.whatsapp || '916238747722';
 
   const getSideName = (s: SideSelection) => {
     if (s === 'groom') return 'Groom Side Photography & Film Coverage';
@@ -159,28 +205,48 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
     ? KERALA_EVENTS.filter((e) => brideEvents[e.id]?.enabled).map((e) => e.nameEn)
     : [];
 
-  // WhatsApp Message
-  const whatsappMessage = encodeURIComponent(
-    `*FRAMELU WEDDING COMPANY - QUOTATION ENQUIRY*\n` +
-    `Hello Framelu Weddings,\nI have generated an official quote (${quoteNo}) for my wedding.\n\n` +
-    `*Customer:* ${lead.name}\n` +
-    `*Phone:* ${lead.phone}\n` +
-    `*Date:* ${lead.weddingDate || 'TBD'}\n` +
-    `*Venue:* ${lead.venueLocation || lead.place || lead.address || 'Kerala'}\n` +
-    `*Coverage Scope:* ${getSideName(side)}\n` +
-    (activeGroomList.length > 0 ? `*Groom Events:* ${activeGroomList.join(', ')}\n` : '') +
-    (activeBrideList.length > 0 ? `*Bride Events:* ${activeBrideList.join(', ')}\n` : '') +
-    `\n*Total Estimate (with 18% Tax):* ₹${grandTotalWithTax.toLocaleString('en-IN')}\n` +
-    `• Advance (25%): ₹${advanceAmount.toLocaleString('en-IN')}\n` +
-    `• On Shoot Completion (50%): ₹${shootCompleteAmount.toLocaleString('en-IN')}\n` +
-    `• Final Delivery (25%): ₹${finalDeliveryAmount.toLocaleString('en-IN')}\n\n` +
-    `Please confirm crew availability for my wedding date. Thank you!`
-  );
+  // WhatsApp Message (Requirement 5)
+  const whatsappMessage = isStandalone
+    ? encodeURIComponent(
+        `*${displayBrandName} - PHOTOSHOOT ENQUIRY*\n` +
+        `Hello ${displayBrandName},\nI have generated an official quote (${quoteNo}) for my photoshoot.\n\n` +
+        `*Customer:* ${lead.name}\n` +
+        `*Phone:* ${lead.phone}\n` +
+        `*Package:* ${shootDetails?.titleEn || lead.notes || 'Photoshoot'}\n` +
+        `*Date:* ${shootDetails?.date || lead.weddingDate || 'TBD'}\n` +
+        `*Location:* ${shootDetails?.venue || lead.venueLocation || lead.place || 'Kerala'}\n` +
+        `*Duration:* ${shootDetails?.sessionHours || 4} Hours (${shootDetails?.locationType || 'Studio'})\n` +
+        (shootDetails?.crew?.reelsCount ? `*Reels:* ${shootDetails.crew.reelsCount} Reels\n` : '') +
+        (shootDetails?.deliverables?.gradedPhotosCount ? `*Graded Photos:* ${shootDetails.deliverables.gradedPhotosCount} Photos\n` : '') +
+        (appliedCoupon ? `*Coupon Applied:* ${appliedCoupon.code} (${couponDiscountPercentage}% OFF)\n` : '') +
+        `\n*Total Estimate (with 18% Tax):* ₹${grandTotalWithTax.toLocaleString('en-IN')}\n` +
+        `• Advance (25%): ₹${advanceAmount.toLocaleString('en-IN')}\n` +
+        `• On Shoot Day (50%): ₹${shootCompleteAmount.toLocaleString('en-IN')}\n` +
+        `• Final Delivery (25%): ₹${finalDeliveryAmount.toLocaleString('en-IN')}\n\n` +
+        `Please confirm crew availability for my shoot date. Thank you!`
+      )
+    : encodeURIComponent(
+        `*${displayBrandName} - QUOTATION ENQUIRY*\n` +
+        `Hello ${displayBrandName},\nI have generated an official quote (${quoteNo}) for my wedding.\n\n` +
+        `*Customer:* ${lead.name}\n` +
+        `*Phone:* ${lead.phone}\n` +
+        `*Date:* ${lead.weddingDate || 'TBD'}\n` +
+        `*Venue:* ${lead.venueLocation || lead.place || lead.address || 'Kerala'}\n` +
+        `*Coverage Scope:* ${getSideName(side)}\n` +
+        (activeGroomList.length > 0 ? `*Groom Events:* ${activeGroomList.join(', ')}\n` : '') +
+        (activeBrideList.length > 0 ? `*Bride Events:* ${activeBrideList.join(', ')}\n` : '') +
+        (appliedCoupon ? `*Coupon Applied:* ${appliedCoupon.code} (${couponDiscountPercentage}% OFF)\n` : '') +
+        `\n*Total Estimate (with 18% Tax):* ₹${grandTotalWithTax.toLocaleString('en-IN')}\n` +
+        `• Advance (25%): ₹${advanceAmount.toLocaleString('en-IN')}\n` +
+        `• On Shoot Completion (50%): ₹${shootCompleteAmount.toLocaleString('en-IN')}\n` +
+        `• Final Delivery (25%): ₹${finalDeliveryAmount.toLocaleString('en-IN')}\n\n` +
+        `Please confirm crew availability for my wedding date. Thank you!`
+      );
 
   // Email Subject & Body
-  const emailSubject = `Wedding Photography Quotation Enquiry - ${lead.name} (${quoteNo})`;
+  const emailSubject = `${displayBrandName} Quotation Enquiry - ${lead.name} (${quoteNo})`;
   const emailBody = 
-`Dear Framelu Wedding Company Team,
+`Dear ${displayBrandName} Team,
 
 I have customized an official quotation for my wedding photography & videography. Please find my quotation summary details below:
 
@@ -208,7 +274,7 @@ ${deliverables?.fullLengthVideo ? '• Full Length Traditional Video: Included\n
 FINANCIAL ESTIMATE
 ==================================================
 • Package Base Subtotal: ₹${baseSubtotal.toLocaleString('en-IN')}
-• GST (18% Tax): ₹${taxAmount.toLocaleString('en-IN')}
+${appliedCoupon ? `• Coupon Discount (${appliedCoupon.code} - ${couponDiscountPercentage}%): -₹${couponDiscountAmount.toLocaleString('en-IN')}\n• Subtotal After Discount: ₹${discountedSubtotal.toLocaleString('en-IN')}\n` : ''}• GST (18% Tax): ₹${taxAmount.toLocaleString('en-IN')}
 • Net Grand Total: ₹${grandTotalWithTax.toLocaleString('en-IN')}
 
 PAYMENT SCHEDULE (MILESTONES):
@@ -225,7 +291,7 @@ Email: ${lead.email || 'N/A'}`;
 
   const mailtoUrl = `mailto:${encodeURIComponent(recipientEmail)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
-  // High-definition Vector-Grade PDF Generator using html2canvas & jsPDF
+  // High-definition Vector-Grade PDF Generator with Precision Margins & Smart Anti-Cut Pagination
   const handleDownloadPdf = async () => {
     const docElement = document.getElementById('printable-quotation-doc');
     if (!docElement) {
@@ -235,22 +301,23 @@ Email: ${lead.email || 'N/A'}`;
 
     setIsDownloading(true);
     try {
-      // Ensure fonts are fully loaded before rendering
       if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
         await document.fonts.ready;
       }
 
-      // 1. Primary Engine: html-to-image (Native SVG foreignObject rendering with 100% CSS & text alignment fidelity)
       const { toPng } = await import('html-to-image');
       const { jsPDF } = await import('jspdf');
 
+      // Capture rendered DOM as ultra HD image
       const imgData = await toPng(docElement, {
-        pixelRatio: 2.5, // 2.5x retina-sharp 300 DPI clarity
+        pixelRatio: 2.5,
         backgroundColor: '#ffffff',
         cacheBust: true,
         style: {
           margin: '0',
           boxShadow: 'none',
+          border: 'none',
+          borderRadius: '0',
         },
       });
 
@@ -264,7 +331,16 @@ Email: ${lead.email || 'N/A'}`;
       const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
       const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
 
-      // Load image to determine exact natural aspect ratio
+      // Standard printing margins on all sides (consistent with professional proposals)
+      const marginX = 12; // 12mm left & right margins
+      const marginTop = 12; // 12mm top margin on page 1
+      const marginBottom = 14; // 14mm bottom margin
+      const printableWidth = pdfWidth - marginX * 2; // 186mm
+      const headerHeight = 9; // 9mm for running header on page 2+
+      const printableHeightPage1 = pdfHeight - marginTop - marginBottom; // 271mm
+      const contentTopPage2 = marginTop + headerHeight; // 21mm
+      const printableHeightPage2 = pdfHeight - contentTopPage2 - marginBottom; // 262mm
+
       const img = new Image();
       img.src = imgData;
       await new Promise<void>((resolve, reject) => {
@@ -274,60 +350,206 @@ Email: ${lead.email || 'N/A'}`;
 
       const imgWidth = img.naturalWidth || img.width;
       const imgHeight = img.naturalHeight || img.height;
-      const canvasRatio = imgHeight / imgWidth;
-      const pageRatio = pdfHeight / pdfWidth; // ~1.414
+      const totalRenderHeight = (imgHeight * printableWidth) / imgWidth;
 
-      if (canvasRatio <= 1.55) {
-        // Single Master Page: Proportionally fits or centers seamlessly without margins breaking
-        let renderWidth = pdfWidth;
-        let renderHeight = pdfWidth * canvasRatio;
-        if (renderHeight > pdfHeight) {
-          renderHeight = pdfHeight;
-          renderWidth = pdfHeight / canvasRatio;
+      // Draw original image onto full-size canvas for pixel inspection & slicing
+      const sourceCanvas = document.createElement('canvas');
+      sourceCanvas.width = imgWidth;
+      sourceCanvas.height = imgHeight;
+      const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      if (!sourceCtx) throw new Error('Could not get canvas context');
+      sourceCtx.drawImage(img, 0, 0);
+
+      // Helper function: Scan for a horizontal row of pixels that is completely white / free of dark text & borders
+      const findCleanCutY = (idealY: number, minY: number): number => {
+        const scanStart = Math.min(Math.round(idealY), imgHeight - 1);
+        const scanEnd = Math.max(Math.round(minY), 0);
+        let bestY = scanStart;
+        let minDarkPixels = Infinity;
+
+        // Scan backwards from ideal cut position upwards
+        for (let y = scanStart; y >= scanEnd; y -= 2) {
+          const rowData = sourceCtx.getImageData(0, y, imgWidth, 1).data;
+          let darkCount = 0;
+          // Sample every 4th pixel for speed
+          for (let x = 0; x < imgWidth; x += 4) {
+            const idx = x * 4;
+            const r = rowData[idx];
+            const g = rowData[idx + 1];
+            const b = rowData[idx + 2];
+            const a = rowData[idx + 3];
+            // If pixel is not white / light background (i.e. has text, icons or borders)
+            if (a > 180 && (r < 240 || g < 240 || b < 240)) {
+              darkCount++;
+            }
+          }
+          if (darkCount === 0) {
+            // Found a 100% clean white space row!
+            return y;
+          }
+          if (darkCount < minDarkPixels) {
+            minDarkPixels = darkCount;
+            bestY = y;
+          }
         }
-        const xOffset = Math.max(0, (pdfWidth - renderWidth) / 2);
-        const yOffset = Math.max(0, (pdfHeight - renderHeight) / 2);
-        pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderWidth, renderHeight, undefined, 'FAST');
-      } else {
-        // Multi-page slicing for extensive event lists
-        const sourcePageHeight = (imgWidth * pdfHeight) / pdfWidth;
-        let heightLeft = imgHeight;
-        let sourceY = 0;
+        return bestY;
+      };
 
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = imgWidth;
-        const tempCtx = tempCanvas.getContext('2d');
+      // Case 1: Fits directly on a single page at 100% scale
+      if (totalRenderHeight <= printableHeightPage1) {
+        pdf.addImage(imgData, 'PNG', marginX, marginTop, printableWidth, totalRenderHeight, undefined, 'FAST');
+        // Running footer
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 140, 130);
+        pdf.setDrawColor(220, 215, 210);
+        pdf.setLineWidth(0.2);
+        pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
+        pdf.text(`Page 1 of 1 • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
+        pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
+      }
+      // Case 2: Just slightly overflows (within 15%) - auto-fit cleanly to 1 page so it never awkwardly spills 2 lines to page 2!
+      else if (totalRenderHeight <= printableHeightPage1 * 1.15) {
+        const fitScale = printableHeightPage1 / totalRenderHeight;
+        const scaledWidth = printableWidth * fitScale;
+        const scaledHeight = totalRenderHeight * fitScale;
+        const offsetX = marginX + (printableWidth - scaledWidth) / 2;
+        pdf.addImage(imgData, 'PNG', offsetX, marginTop, scaledWidth, scaledHeight, undefined, 'FAST');
+        // Running footer
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 140, 130);
+        pdf.setDrawColor(220, 215, 210);
+        pdf.setLineWidth(0.2);
+        pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
+        pdf.text(`Page 1 of 1 • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
+        pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
+      }
+      // Case 3: Genuine multi-page proposal - smart anti-cut boundary detection & slice calculation
+      else {
+        // Collect all atomic cards/sections from the DOM that must never be sliced in half
+        const docRect = docElement.getBoundingClientRect();
+        const scaleY = imgHeight / docElement.offsetHeight;
 
-        while (heightLeft > 50 && tempCtx) {
-          if (sourceY > 0) {
+        const avoidNodes = Array.from(
+          docElement.querySelectorAll<HTMLElement>(
+            '.pdf-section, .break-inside-avoid, [data-pdf-block], .pdf-ceremony-item, .pdf-service-item, #printable-quotation-doc > div'
+          )
+        );
+
+        const avoidRanges = avoidNodes
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            return {
+              top: (r.top - docRect.top) * scaleY,
+              bottom: (r.bottom - docRect.top) * scaleY,
+              height: r.height * scaleY,
+            };
+          })
+          .filter((rg) => rg.height > 10)
+          .sort((a, b) => a.top - b.top);
+
+        // Pre-compute slices so that no element is cut and total page count is exact
+        const slices: { startY: number; endY: number; isFirstPage: boolean }[] = [];
+        let currentY = 0;
+
+        while (currentY < imgHeight - 15) {
+          const isFirst = slices.length === 0;
+          const availHeightMm = isFirst ? printableHeightPage1 : printableHeightPage2;
+          const maxCanvasPageHeight = (imgWidth * availHeightMm) / printableWidth;
+          const remainingHeight = imgHeight - currentY;
+
+          if (remainingHeight <= maxCanvasPageHeight) {
+            slices.push({ startY: currentY, endY: imgHeight, isFirstPage: isFirst });
+            break;
+          }
+
+          const targetCutY = currentY + maxCanvasPageHeight;
+          let idealCutY = targetCutY;
+
+          // Check if any element straddles targetCutY (starts before targetCutY and ends after targetCutY)
+          for (const range of avoidRanges) {
+            if (range.top < targetCutY - 10 && range.bottom > targetCutY + 10) {
+              // Only move cut point upwards if it leaves a reasonable amount on current page (>30%)
+              if (range.top > currentY + maxCanvasPageHeight * 0.3) {
+                idealCutY = Math.min(idealCutY, range.top);
+              }
+            }
+          }
+
+          // Scan for a 100% clean white space row at or above idealCutY
+          const cleanCutY = findCleanCutY(
+            idealCutY,
+            currentY + maxCanvasPageHeight * 0.3
+          );
+
+          // Safety check: ensure forward progress
+          const finalCutY = cleanCutY > currentY + 50 ? cleanCutY : targetCutY;
+
+          slices.push({ startY: currentY, endY: finalCutY, isFirstPage: isFirst });
+          currentY = finalCutY;
+        }
+
+        const totalPages = slices.length;
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = imgWidth;
+        const sliceCtx = sliceCanvas.getContext('2d');
+
+        for (let i = 0; i < slices.length; i++) {
+          const slice = slices[i];
+          const pageNum = i + 1;
+          const sliceHeight = slice.endY - slice.startY;
+
+          if (pageNum > 1) {
             pdf.addPage();
           }
-          const currentSliceHeight = Math.min(heightLeft, sourcePageHeight);
-          tempCanvas.height = currentSliceHeight;
-          tempCtx.clearRect(0, 0, imgWidth, currentSliceHeight);
-          tempCtx.drawImage(
-            img,
-            0,
-            sourceY,
-            imgWidth,
-            currentSliceHeight,
-            0,
-            0,
-            imgWidth,
-            currentSliceHeight
-          );
-          const sliceData = tempCanvas.toDataURL('image/png');
-          const sliceRenderHeight = (currentSliceHeight * pdfWidth) / imgWidth;
-          pdf.addImage(sliceData, 'PNG', 0, 0, pdfWidth, sliceRenderHeight, undefined, 'FAST');
 
-          sourceY += currentSliceHeight;
-          heightLeft -= currentSliceHeight;
+          if (sliceCtx && sliceHeight > 0) {
+            sliceCanvas.height = sliceHeight;
+            sliceCtx.clearRect(0, 0, imgWidth, sliceHeight);
+            sliceCtx.drawImage(
+              img,
+              0,
+              slice.startY,
+              imgWidth,
+              sliceHeight,
+              0,
+              0,
+              imgWidth,
+              sliceHeight
+            );
+
+            const sliceData = sliceCanvas.toDataURL('image/png');
+            const sliceRenderHeight = (sliceHeight * printableWidth) / imgWidth;
+            const contentTop = slice.isFirstPage ? marginTop : contentTopPage2;
+
+            // Running header on page 2+
+            if (pageNum > 1) {
+              pdf.setFontSize(8);
+              pdf.setTextColor(120, 113, 108);
+              pdf.text(`${displayBrandName} • Official Proposal (${quoteNo})`, marginX, marginTop + 3);
+              pdf.setDrawColor(220, 215, 210);
+              pdf.setLineWidth(0.2);
+              pdf.line(marginX, marginTop + 5.5, pdfWidth - marginX, marginTop + 5.5);
+            }
+
+            // Clean, uncut content slice placed strictly within page margins
+            pdf.addImage(sliceData, 'PNG', marginX, contentTop, printableWidth, sliceRenderHeight, undefined, 'FAST');
+
+            // Running footer with page numbers and margin
+            pdf.setFontSize(8);
+            pdf.setTextColor(150, 140, 130);
+            pdf.setDrawColor(220, 215, 210);
+            pdf.setLineWidth(0.2);
+            pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
+            pdf.text(`Page ${pageNum} of ${totalPages} • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
+            pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
+          }
         }
       }
 
+      const safeBrand = (studioUser?.studioName || 'Framelu').replace(/[^a-zA-Z0-9-_]/g, '_');
       const safeQuote = quoteNo.replace(/[^a-zA-Z0-9-_]/g, '_');
       const safeName = (lead.name || 'Customer').replace(/[^a-zA-Z0-9-_]/g, '_');
-      pdf.save(`Framelu_Quotation_${safeQuote}_${safeName}.pdf`);
+      pdf.save(`${safeBrand}_Quotation_${safeQuote}_${safeName}.pdf`);
 
       setIsDownloading(false);
       setShowPostDownloadModal(true);
@@ -347,19 +569,25 @@ Email: ${lead.email || 'N/A'}`;
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
+        const marginX = 12;
+        const marginTop = 12;
+        const marginBottom = 14;
+        const printableWidth = pdfWidth - marginX * 2;
+        const printableHeight = pdfHeight - marginTop - marginBottom;
         const canvasRatio = canvas.height / canvas.width;
-        let renderWidth = pdfWidth;
-        let renderHeight = pdfWidth * canvasRatio;
-        if (renderHeight > pdfHeight) {
-          renderHeight = pdfHeight;
-          renderWidth = pdfHeight / canvasRatio;
+        let renderWidth = printableWidth;
+        let renderHeight = printableWidth * canvasRatio;
+        if (renderHeight > printableHeight) {
+          renderHeight = printableHeight;
+          renderWidth = printableHeight / canvasRatio;
         }
-        const xOffset = Math.max(0, (pdfWidth - renderWidth) / 2);
-        const yOffset = Math.max(0, (pdfHeight - renderHeight) / 2);
+        const xOffset = marginX + Math.max(0, (printableWidth - renderWidth) / 2);
+        const yOffset = marginTop;
         pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderWidth, renderHeight, undefined, 'FAST');
+        const safeBrand = (studioUser?.studioName || 'Framelu').replace(/[^a-zA-Z0-9-_]/g, '_');
         const safeQuote = quoteNo.replace(/[^a-zA-Z0-9-_]/g, '_');
         const safeName = (lead.name || 'Customer').replace(/[^a-zA-Z0-9-_]/g, '_');
-        pdf.save(`Framelu_Quotation_${safeQuote}_${safeName}.pdf`);
+        pdf.save(`${safeBrand}_Quotation_${safeQuote}_${safeName}.pdf`);
         setIsDownloading(false);
         setShowPostDownloadModal(true);
       } catch (err) {
@@ -478,7 +706,7 @@ Email: ${lead.email || 'N/A'}`;
             {/* ========================================================= */}
             <div
               id="printable-quotation-doc"
-              className="pdf-page bg-white max-w-[800px] w-full mx-auto p-6 sm:p-8 rounded-2xl border border-stone-300 shadow-md text-stone-900 space-y-3.5 relative print:border-none print:shadow-none print:p-0 print:m-0"
+              className="pdf-page bg-white max-w-[800px] w-full mx-auto p-5 sm:p-7 rounded-2xl border border-stone-300 shadow-md text-stone-900 space-y-3 relative print:border-none print:shadow-none print:p-0 print:m-0"
               style={{
                 fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
               }}
@@ -491,18 +719,16 @@ Email: ${lead.email || 'N/A'}`;
                       <Camera className="w-5 h-5" />
                     </div>
                     <div>
-                      <h1 className="text-xl sm:text-2xl font-black tracking-tight text-stone-900 leading-tight">
-                        FRAMELU <span className="text-amber-600">WEDDING COMPANY</span>
+                      <h1 className="text-xl sm:text-2xl font-black tracking-tight text-stone-900 leading-tight uppercase">
+                        {displayBrandName}
                       </h1>
                       <p className="text-[11px] font-semibold text-stone-600 whitespace-nowrap">
-                        {isMl
-                          ? 'പ്രീമിയം വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫിയും ഫിലിംസും'
-                          : 'Premium Wedding Photography, Cinematography & Keepsake Albums'}
+                        {displaySubheader}
                       </p>
                     </div>
                   </div>
                   <p className="text-[10px] sm:text-[11px] text-stone-500 mt-2 leading-relaxed">
-                    {studioContact.destination} • Phone: <span className="font-semibold text-stone-700">{studioContact.phone}</span> • Email: <span className="font-semibold text-stone-700">{studioContact.email}</span>
+                    {displayLocation} • Phone: <span className="font-semibold text-stone-700">{displayPhone}</span> • Email: <span className="font-semibold text-stone-700">{displayEmail}</span>
                   </p>
                 </div>
 
@@ -549,264 +775,522 @@ Email: ${lead.email || 'N/A'}`;
                   </div>
                 </div>
 
-                {/* Right: Wedding Scope */}
+                {/* Right: Event Scope / Photoshoot Scope */}
                 <div className="sm:pl-1 space-y-1 pt-2 sm:pt-0 border-t sm:border-t-0 border-stone-200">
                   <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block mb-1">
-                    {isMl ? 'കവറേജ് വിവരങ്ങൾ' : 'WEDDING EVENT SCOPE'}
+                    {isMl ? (isStandalone ? 'ഫോട്ടോഷൂട്ട് വിവരങ്ങൾ' : 'കവറേജ് വിവരങ്ങൾ') : (isStandalone ? 'PHOTOSHOOT SCOPE' : 'WEDDING EVENT SCOPE')}
                   </span>
                   <div className="space-y-0.5 text-[11px]">
                     <div className="flex items-center">
-                      <span className="w-24 text-stone-400 font-semibold text-[10px] uppercase">Event Date:</span>
-                      <span className="font-bold text-stone-900 text-xs">{lead.weddingDate || 'To Be Confirmed'}</span>
+                      <span className="w-24 text-stone-400 font-semibold text-[10px] uppercase">
+                        {isStandalone ? 'Shoot Date:' : 'Event Date:'}
+                      </span>
+                      <span className="font-bold text-stone-900 text-xs">
+                        {shootDetails?.date || lead.weddingDate || 'To Be Confirmed'}
+                      </span>
                     </div>
                     <div className="flex items-center">
-                      <span className="w-24 text-stone-400 font-semibold text-[10px] uppercase">Primary Venue:</span>
-                      <span className="font-semibold text-stone-800">{lead.venueLocation || lead.place || 'Local Venue'}</span>
+                      <span className="w-24 text-stone-400 font-semibold text-[10px] uppercase">
+                        {isStandalone ? 'Shoot Venue:' : 'Primary Venue:'}
+                      </span>
+                      <span className="font-semibold text-stone-800">
+                        {shootDetails?.venueLocation || lead.venueLocation || lead.place || 'Local Venue'}
+                      </span>
                     </div>
                     <div className="flex items-center pt-0.5">
-                      <span className="w-24 text-stone-400 font-semibold text-[10px] uppercase">Scope Type:</span>
+                      <span className="w-24 text-stone-400 font-semibold text-[10px] uppercase">
+                        {isStandalone ? 'Package:' : 'Scope Type:'}
+                      </span>
                       <span className="font-extrabold text-amber-900 text-[10px] bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300">
-                        {getSideName(side)}
+                        {isStandalone ? (shootDetails?.title || 'Photoshoot Package') : getSideName(side)}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* 3. Ceremonies & Tabular Crew Allocation (Structured Table) */}
-              <div className="pdf-section break-inside-avoid space-y-2.5">
-                {/* GROOM SIDE SECTION */}
-                {(side === 'groom' || side === 'both') && groomEvents && (
+              {isStandalone ? (
+                /* STANDALONE PHOTOSHOOT PROPOSAL */
+                <div className="pdf-section break-inside-avoid space-y-3">
+                  {/* 1. Photoshoot Hero / Overview Banner Card */}
+                  <div className="border border-amber-200 bg-gradient-to-r from-amber-50/70 via-stone-50 to-amber-50/40 rounded-xl p-3 flex flex-col sm:flex-row items-center gap-3">
+                    {shootDetails?.imageUrl && (
+                      <img
+                        src={shootDetails.imageUrl}
+                        alt={shootDetails.title || 'Photoshoot'}
+                        className="w-full sm:w-28 h-24 object-cover rounded-lg border border-stone-200 shrink-0 shadow-xs"
+                      />
+                    )}
+                    <div className="flex-1 space-y-1 text-center sm:text-left">
+                      <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-600 text-white shadow-2xs">
+                          {shootDetails?.tag || 'Exclusive Photoshoot'}
+                        </span>
+                        <span className="text-[11px] font-bold text-stone-500">
+                          {shootDetails?.hours ? `${shootDetails.hours} Hours Coverage` : 'Standard Coverage'}
+                        </span>
+                        <span className="text-[11px] font-bold text-stone-500">
+                          • {shootDetails?.locationType || 'Single Location'}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-black text-stone-900">
+                        {shootDetails?.title || 'Standalone Photography & Videography Package'}
+                      </h3>
+                      {shootDetails?.description && (
+                        <p className="text-xs text-stone-600 line-clamp-2">
+                          {shootDetails.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Photography & Videography Crew Coverage */}
                   <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
                     <div className="bg-amber-600 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
                       <div className="flex items-center gap-2">
                         <Camera className="w-3.5 h-3.5" />
-                        <span>1. Groom Side Ceremonies & Crew Allocation</span>
+                        <span>{isMl ? '1. ക്രൂ കവറേജ് & ഉപകരണങ്ങൾ' : '1. Photography Crew & Technical Coverage'}</span>
                       </div>
                       <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
-                        {KERALA_EVENTS.filter((e) => groomEvents[e.id]?.enabled).length} Events
+                        On-Location Production
                       </span>
                     </div>
 
-                    <div className="divide-y divide-stone-200 bg-white">
-                      {KERALA_EVENTS.filter((e) => groomEvents[e.id]?.enabled).map((evt) => {
-                        const cfg = groomEvents[evt.id];
-                        return (
-                          <div key={evt.id} className="p-2.5 text-xs">
-                            <div className="flex justify-between items-center mb-1 pb-1 border-b border-stone-100">
-                              <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0"></span>
-                                {isMl ? evt.nameMl : evt.nameEn}
-                              </span>
-                              <span className="text-[11px] text-stone-500 font-medium">
-                                {cfg.date ? `Date: ${cfg.date}` : ''} {cfg.venue ? `• Venue: ${cfg.venue}` : ''}
-                              </span>
-                            </div>
-
-                            {/* 3 Tabular Aligned Columns */}
-                            <div className="grid grid-cols-3 gap-2 text-[11px] bg-[#fbfaf8] p-2 rounded-lg border border-stone-200/80">
-                              <div className="space-y-0.5">
-                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Photography Crew</span>
-                                <div className="text-stone-800">
-                                  Traditional: <strong className="text-stone-900">{cfg.traditionalPhotographers || 0} {cfg.traditionalPhotographers > 1 ? `(${cfg.traditionalPhotographers} Cameras)` : ''}</strong>
-                                </div>
-                                {cfg.candidPhotographers > 0 && (
-                                  <div className="text-rose-800">
-                                    Candid: <strong className="text-rose-950 font-bold">{cfg.candidPhotographers} {cfg.candidPhotographers > 1 ? `(${cfg.candidPhotographers} Cameras)` : ''}</strong>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
-                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Videography Crew</span>
-                                <div className="text-stone-800">
-                                  Traditional: <strong className="text-stone-900">{cfg.traditionalVideographers || 0} {cfg.traditionalVideographers > 1 ? `(${cfg.traditionalVideographers} Cameras)` : ''}</strong>
-                                </div>
-                                {cfg.candidVideographers > 0 && (
-                                  <div className="text-purple-800">
-                                    Cinematic: <strong className="text-purple-950 font-bold">{cfg.candidVideographers} {cfg.candidVideographers > 1 ? `(${cfg.candidVideographers} Cameras)` : ''}</strong>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
-                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Special Coverage</span>
-                                <div className="flex flex-wrap gap-1 pt-0.5">
-                                  {cfg.drone && <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">4K Drone</span>}
-                                  {cfg.auditoriumLive && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded border border-indigo-300">Hall LED Live</span>}
-                                  {cfg.youtubeLive && <span className="text-[10px] font-bold bg-red-100 text-red-900 px-1.5 py-0.5 rounded border border-red-300">YouTube Live</span>}
-                                  {cfg.photoLivePrinting && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-300">Live Print</span>}
-                                  {!cfg.drone && !cfg.auditoriumLive && !cfg.youtubeLive && !cfg.photoLivePrinting && (
-                                    <span className="text-stone-400 text-[10px]">Standard Coverage</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* BRIDE SIDE SECTION */}
-                {(side === 'bride' || side === 'both') && brideEvents && (
-                  <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
-                    <div className="bg-rosewood-700 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
-                      <div className="flex items-center gap-2">
-                        <Camera className="w-3.5 h-3.5" />
-                        <span>2. Bride Side Ceremonies & Crew Allocation</span>
+                    <div className="p-3 bg-white grid grid-cols-1 sm:grid-cols-3 gap-3 divide-y sm:divide-y-0 sm:divide-x divide-stone-100 text-xs">
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                          Photography Crew
+                        </span>
+                        <p className="text-[11px] text-stone-700 font-semibold">
+                          • {shootDetails?.crew?.photographers || 1} Professional Photographer(s)
+                        </p>
+                        <p className="text-[10px] text-stone-500">
+                          Full frame high-resolution digital cameras & prime prime lenses
+                        </p>
                       </div>
-                      <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
-                        {KERALA_EVENTS.filter((e) => brideEvents[e.id]?.enabled).length} Events
-                      </span>
-                    </div>
 
-                    <div className="divide-y divide-stone-200 bg-white">
-                      {KERALA_EVENTS.filter((e) => brideEvents[e.id]?.enabled).map((evt) => {
-                        const cfg = brideEvents[evt.id];
-                        return (
-                          <div key={evt.id} className="p-2.5 text-xs">
-                            <div className="flex justify-between items-center mb-1 pb-1 border-b border-stone-100">
-                              <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-rosewood-600 shrink-0"></span>
-                                {isMl ? evt.nameMl : evt.nameEn}
-                              </span>
-                              <span className="text-[11px] text-stone-500 font-medium">
-                                {cfg.date ? `Date: ${cfg.date}` : ''} {cfg.venue ? `• Venue: ${cfg.venue}` : ''}
-                              </span>
-                            </div>
-
-                            {/* 3 Tabular Aligned Columns */}
-                            <div className="grid grid-cols-3 gap-2 text-[11px] bg-[#fbfaf8] p-2 rounded-lg border border-stone-200/80">
-                              <div className="space-y-0.5">
-                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Photography Crew</span>
-                                <div className="text-stone-800">
-                                  Traditional: <strong className="text-stone-900">{cfg.traditionalPhotographers || 0} {cfg.traditionalPhotographers > 1 ? `(${cfg.traditionalPhotographers} Cameras)` : ''}</strong>
-                                </div>
-                                {cfg.candidPhotographers > 0 && (
-                                  <div className="text-rose-800">
-                                    Candid: <strong className="text-rose-950 font-bold">{cfg.candidPhotographers} {cfg.candidPhotographers > 1 ? `(${cfg.candidPhotographers} Cameras)` : ''}</strong>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
-                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Videography Crew</span>
-                                <div className="text-stone-800">
-                                  Traditional: <strong className="text-stone-900">{cfg.traditionalVideographers || 0} {cfg.traditionalVideographers > 1 ? `(${cfg.traditionalVideographers} Cameras)` : ''}</strong>
-                                </div>
-                                {cfg.candidVideographers > 0 && (
-                                  <div className="text-purple-800">
-                                    Cinematic: <strong className="text-purple-950 font-bold">{cfg.candidVideographers} {cfg.candidVideographers > 1 ? `(${cfg.candidVideographers} Cameras)` : ''}</strong>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
-                                <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Special Coverage</span>
-                                <div className="flex flex-wrap gap-1 pt-0.5">
-                                  {cfg.drone && <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">4K Drone</span>}
-                                  {cfg.auditoriumLive && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded border border-indigo-300">Hall LED Live</span>}
-                                  {cfg.youtubeLive && <span className="text-[10px] font-bold bg-red-100 text-red-900 px-1.5 py-0.5 rounded border border-red-300">YouTube Live</span>}
-                                  {cfg.photoLivePrinting && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-300">Live Print</span>}
-                                  {!cfg.drone && !cfg.auditoriumLive && !cfg.youtubeLive && !cfg.photoLivePrinting && (
-                                    <span className="text-stone-400 text-[10px]">Standard Coverage</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 4. Output Deliverables & Keepsakes (3 Aligned Columns) */}
-              {deliverables && (
-                <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
-                  <div className="bg-stone-800 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
-                    <div className="flex items-center gap-2">
-                      <Film className="w-3.5 h-3.5 text-amber-400" />
-                      <span>3. Output Deliverables & Production Keepsakes</span>
-                    </div>
-                    <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
-                      Master Quality
-                    </span>
-                  </div>
-
-                  <div className="p-2.5 bg-white text-xs grid grid-cols-1 sm:grid-cols-3 gap-2.5 divide-y sm:divide-y-0 sm:divide-x divide-stone-100">
-                    {/* Col 1: Video Deliverables */}
-                    <div className="space-y-1">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
-                        Video Production
-                      </span>
-                      <div className="space-y-0.5 text-[11px] text-stone-700">
-                        <p>• Resolution: <strong className="text-stone-900">{deliverables.videoQuality === '4k' ? '4K Ultra HD' : 'Full HD 1080p'}</strong></p>
-                        {deliverables.fullLengthVideo && <p>• Full Length Traditional Video</p>}
-                        {deliverables.highlightVideo && <p>• Cinematic Highlight (3-5 Mins)</p>}
-                        {deliverables.teaserVideo && <p>• Cinematic Teaser Promo</p>}
-                        {deliverables.reelsCount > 0 && <p>• {deliverables.reelsCount} Instagram Viral Reels</p>}
+                      <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                          Videography & Reels
+                        </span>
+                        <p className="text-[11px] text-stone-700 font-semibold">
+                          • {(shootDetails?.crew?.videographers || 0) > 0 ? `${shootDetails?.crew?.videographers} Cinematic Videographer(s)` : 'No Videographer (Photo Only)'}
+                        </p>
+                        {(shootDetails?.crew?.reelsCount || shootDetails?.deliverables?.reelsCount || deliverables?.reelsCount || 0) > 0 && (
+                          <p className="text-[11px] text-purple-900 font-bold">
+                            • {shootDetails?.crew?.reelsCount || shootDetails?.deliverables?.reelsCount || deliverables?.reelsCount} Viral Instagram Reels
+                          </p>
+                        )}
                       </div>
-                    </div>
 
-                    {/* Col 2: Albums */}
-                    <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
-                        Wedding Albums
-                      </span>
-                      <div className="space-y-0.5 text-[11px] text-stone-700">
-                        {deliverables.mainAlbumsCount > 0 ? (
-                          <>
-                            <p>• Main Albums: <strong className="text-stone-900">{deliverables.mainAlbumsCount} Nos</strong></p>
-                            <p>• Sheets/Pages: <strong className="text-stone-900">{deliverables.mainAlbumSheets} Sheets</strong></p>
-                            <p>• Album Cover: <strong className="capitalize text-stone-900">{getAlbumCoverTitle(deliverables.albumPaperType)}</strong></p>
-                          </>
+                      <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                          Special Equipment & Aerial
+                        </span>
+                        {shootDetails?.crew?.drone ? (
+                          <span className="inline-block text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                            4K Aerial Drone Included
+                          </span>
                         ) : (
-                          <p className="text-stone-400">Digital Deliverables Only</p>
+                          <span className="text-[11px] text-stone-400">Ground Level Coverage</span>
                         )}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Col 3: Keepsakes & Frames */}
-                    <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
-                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
-                        Frames & Keepsakes
+                  {/* 3. Output Deliverables & Master Files */}
+                  <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="bg-stone-800 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
+                      <div className="flex items-center gap-2">
+                        <Film className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{isMl ? '2. ഡെലിവറി ചെയ്യുന്നവ' : '2. Output Deliverables & Master Files'}</span>
+                      </div>
+                      <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
+                        Final Delivery
                       </span>
-                      <div className="space-y-0.5 text-[11px] text-stone-700">
-                        {deliverables.frames_8x12 > 0 && <p>• 8x12 Frame: {deliverables.frames_8x12} Nos</p>}
-                        {deliverables.frames_18x12 > 0 && <p>• 18x12 Frame: {deliverables.frames_18x12} Nos</p>}
-                        {deliverables.frames_15x20 > 0 && <p>• 15x20 Canvas: {deliverables.frames_15x20} Nos</p>}
-                        {deliverables.penDriveCount > 0 && <p>• USB 3.0 Pen Drives: {deliverables.penDriveCount} Nos</p>}
-                        {deliverables.penDriveBoxCount > 0 && <p>• Wooden Keepsake Boxes: {deliverables.penDriveBoxCount} Nos</p>}
-                        {deliverables.miniAlbumsCount > 0 && <p>• Mini Albums: {deliverables.miniAlbumsCount} Nos</p>}
-                        {customPrintItems?.map((it) => {
-                          const count = deliverables.customPrintCounts?.[it.id] ?? (deliverables as any)[it.id] ?? 0;
-                          if (!count || count <= 0) return null;
-                          return (
-                            <p key={it.id}>• {it.nameEn}: {count} {it.unitName || 'Nos'}</p>
-                          );
-                        })}
-                        {!deliverables.frames_8x12 &&
-                          !deliverables.frames_18x12 &&
-                          !deliverables.frames_15x20 &&
-                          !deliverables.penDriveCount &&
-                          !deliverables.penDriveBoxCount &&
-                          !deliverables.miniAlbumsCount &&
-                          (!deliverables.customPrintCounts ||
-                            Object.values(deliverables.customPrintCounts).every((v) => !v)) && (
-                            <p className="text-stone-400">Standard Cloud Delivery</p>
+                    </div>
+
+                    <div className="p-3 bg-white grid grid-cols-1 sm:grid-cols-3 gap-3 divide-y sm:divide-y-0 sm:divide-x divide-stone-100 text-xs">
+                      {/* Col 1: Photos & Color Grading */}
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                          Photos & Color Grading
+                        </span>
+                        <div className="space-y-1 text-[11px] text-stone-700">
+                          <div className="p-1.5 rounded-md bg-amber-50 border border-amber-200">
+                            <span className="text-[10px] font-bold text-amber-900 uppercase block">Graded Photos</span>
+                            <span className="text-sm font-black text-amber-950">
+                              {shootDetails?.deliverables?.gradedPhotosCount || shootDetails?.gradedPhotosCount || deliverables?.gradedPhotosCount || 100} Photos
+                            </span>
+                            <p className="text-[9px] text-amber-800 leading-tight mt-0.5">
+                              {isMl ? 'കളർ ഗ്രേഡ് ചെയ്ത് ഫിനിഷ് ചെയ്ത ഹൈ-റെസ് ചിത്രങ്ങൾ' : 'Master retouching & signature cinematic color grading'}
+                            </p>
+                          </div>
+                          <p className="text-[10px] text-stone-500">• All original raw/unedited high-res photos delivered via Cloud Drive</p>
+                        </div>
+                      </div>
+
+                      {/* Col 2: Video Production */}
+                      <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                          Video Deliverables
+                        </span>
+                        <div className="space-y-0.5 text-[11px] text-stone-700">
+                          <p>• Resolution: <strong className="text-stone-900">{shootDetails?.deliverables?.videoQuality === '4k' || deliverables?.videoQuality === '4k' ? '4K Ultra HD' : 'Full HD 1080p'}</strong></p>
+                          {(shootDetails?.deliverables?.teaserVideo ?? deliverables?.teaserVideo) && <p>• Cinematic Teaser / Highlight Promo</p>}
+                          {(shootDetails?.deliverables?.fullLengthVideo ?? deliverables?.fullLengthVideo) && <p>• Full Length Event Video Film</p>}
+                          {((shootDetails?.deliverables?.reelsCount || deliverables?.reelsCount || 0) > 0) && (
+                            <p>• {shootDetails?.deliverables?.reelsCount || deliverables?.reelsCount} Cinematic Vertical Reels (9:16)</p>
                           )}
+                          {!shootDetails?.deliverables?.teaserVideo && !shootDetails?.deliverables?.fullLengthVideo && !shootDetails?.crew?.videographers && (
+                            <p className="text-stone-400 italic">Photography Only Package</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Col 3: Keepsakes & Album */}
+                      <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                          Keepsakes & Album
+                        </span>
+                        <div className="space-y-0.5 text-[11px] text-stone-700">
+                          {(shootDetails?.deliverables?.mainAlbumsCount || deliverables?.mainAlbumsCount || 0) > 0 ? (
+                            <>
+                              <p>• Album: <strong className="text-stone-900">{shootDetails?.deliverables?.mainAlbumsCount || deliverables?.mainAlbumsCount} Book(s)</strong></p>
+                              <p>• Pages: <strong className="text-stone-900">{shootDetails?.deliverables?.mainAlbumSheets || deliverables?.mainAlbumSheets || 30} Sheets</strong></p>
+                              <p>• Cover: <strong className="capitalize text-stone-900">{getAlbumCoverTitle(shootDetails?.deliverables?.albumPaperType || deliverables?.albumPaperType || 'matte')}</strong></p>
+                            </>
+                          ) : (
+                            <p className="text-stone-400">• Digital Master Files Delivery</p>
+                          )}
+                          {(shootDetails?.deliverables?.frames_8x12 || deliverables?.frames_8x12 || 0) > 0 && (
+                            <p>• 8x12 Frame: {shootDetails?.deliverables?.frames_8x12 || deliverables?.frames_8x12} Nos</p>
+                          )}
+                          {(shootDetails?.deliverables?.frames_18x12 || deliverables?.frames_18x12 || 0) > 0 && (
+                            <p>• 12x18 Frame: {shootDetails?.deliverables?.frames_18x12 || deliverables?.frames_18x12} Nos</p>
+                          )}
+                          {(shootDetails?.deliverables?.frames_15x20 || deliverables?.frames_15x20 || 0) > 0 && (
+                            <p>• 15x20 Canvas Frame: {shootDetails?.deliverables?.frames_15x20 || deliverables?.frames_15x20} Nos</p>
+                          )}
+                          {(shootDetails?.deliverables?.penDriveCount || deliverables?.penDriveCount || 0) > 0 && (
+                            <p>• USB 3.0 Pen Drive: {shootDetails?.deliverables?.penDriveCount || deliverables?.penDriveCount} Nos</p>
+                          )}
+                          {(shootDetails?.deliverables?.penDriveBoxCount || deliverables?.penDriveBoxCount || 0) > 0 && (
+                            <p>• Wooden Keepsake Box: {shootDetails?.deliverables?.penDriveBoxCount || deliverables?.penDriveBoxCount} Nos</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
+
+                  {/* 4. Inclusions & Features */}
+                  {shootDetails?.features && shootDetails.features.length > 0 && (
+                    <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+                      <div className="bg-stone-100 px-3.5 py-1.5 flex items-center justify-between font-bold text-xs text-stone-800">
+                        <div className="flex items-center gap-2">
+                          <Check className="w-3.5 h-3.5 text-amber-600" />
+                          <span>{isMl ? 'പ്രത്യേകതകൾ & ആനുകൂല്യങ്ങൾ' : 'Package Inclusions & Key Highlights'}</span>
+                        </div>
+                      </div>
+                      <div className="p-2.5 bg-white grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-stone-700">
+                        {shootDetails.features.map((feat: string, i: number) => (
+                          <div key={i} className="flex items-start gap-1.5">
+                            <Check className="w-3 h-3 text-emerald-600 mt-0.5 shrink-0" />
+                            <span>{feat}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                /* REGULAR WEDDING CEREMONIES & DELIVERABLES VIEW */
+                <>
+                  {/* 3. Ceremonies & Tabular Crew Allocation (Structured Table) */}
+                  <div className="pdf-section break-inside-avoid space-y-2.5">
+                    {/* GROOM SIDE SECTION */}
+                    {(side === 'groom' || side === 'both') && groomEvents && (
+                      <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+                        <div className="bg-amber-600 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
+                          <div className="flex items-center gap-2">
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>1. Groom Side Ceremonies & Crew Allocation</span>
+                          </div>
+                          <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
+                            {KERALA_EVENTS.filter((e) => groomEvents[e.id]?.enabled).length} Events
+                          </span>
+                        </div>
+
+                        <div className="divide-y divide-stone-200 bg-white">
+                          {KERALA_EVENTS.filter((e) => groomEvents[e.id]?.enabled).map((evt) => {
+                            const cfg = groomEvents[evt.id];
+                            return (
+                              <div key={evt.id} className="pdf-ceremony-item p-2.5 text-xs">
+                                <div className="flex justify-between items-center mb-1 pb-1 border-b border-stone-100">
+                                  <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0"></span>
+                                    {isMl ? evt.nameMl : evt.nameEn}
+                                  </span>
+                                  <span className="text-[11px] text-stone-500 font-medium">
+                                    {cfg.date ? `Date: ${cfg.date}` : ''} {cfg.venue ? `• Venue: ${cfg.venue}` : ''}
+                                  </span>
+                                </div>
+
+                                {/* 3 Tabular Aligned Columns */}
+                                <div className="grid grid-cols-3 gap-2 text-[11px] bg-[#fbfaf8] p-2 rounded-lg border border-stone-200/80">
+                                  <div className="space-y-0.5">
+                                    <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Photography Crew</span>
+                                    <div className="text-stone-800">
+                                      Traditional: <strong className="text-stone-900">{cfg.traditionalPhotographers || 0} {cfg.traditionalPhotographers > 1 ? `(${cfg.traditionalPhotographers} Cameras)` : ''}</strong>
+                                    </div>
+                                    {cfg.candidPhotographers > 0 && (
+                                      <div className="text-rose-800">
+                                        Candid: <strong className="text-rose-950 font-bold">{cfg.candidPhotographers} {cfg.candidPhotographers > 1 ? `(${cfg.candidPhotographers} Cameras)` : ''}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
+                                    <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Videography Crew</span>
+                                    <div className="text-stone-800">
+                                      Traditional: <strong className="text-stone-900">{cfg.traditionalVideographers || 0} {cfg.traditionalVideographers > 1 ? `(${cfg.traditionalVideographers} Cameras)` : ''}</strong>
+                                    </div>
+                                    {cfg.candidVideographers > 0 && (
+                                      <div className="text-purple-800">
+                                        Cinematic: <strong className="text-purple-950 font-bold">{cfg.candidVideographers} {cfg.candidVideographers > 1 ? `(${cfg.candidVideographers} Cameras)` : ''}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
+                                    <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Special Coverage</span>
+                                    <div className="flex flex-wrap gap-1 pt-0.5">
+                                      {cfg.drone && <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">4K Drone</span>}
+                                      {cfg.auditoriumLive && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded border border-indigo-300">Hall LED Live</span>}
+                                      {cfg.youtubeLive && <span className="text-[10px] font-bold bg-red-100 text-red-900 px-1.5 py-0.5 rounded border border-red-300">YouTube Live</span>}
+                                      {cfg.photoLivePrinting && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-300">Live Print</span>}
+                                      {!cfg.drone && !cfg.auditoriumLive && !cfg.youtubeLive && !cfg.photoLivePrinting && (
+                                        <span className="text-stone-400 text-[10px]">Standard Coverage</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* BRIDE SIDE SECTION */}
+                    {(side === 'bride' || side === 'both') && brideEvents && (
+                      <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+                        <div className="bg-rosewood-600 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
+                          <div className="flex items-center gap-2">
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>2. Bride Side Ceremonies & Crew Allocation</span>
+                          </div>
+                          <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
+                            {KERALA_EVENTS.filter((e) => brideEvents[e.id]?.enabled).length} Events
+                          </span>
+                        </div>
+
+                        <div className="divide-y divide-stone-200 bg-white">
+                          {KERALA_EVENTS.filter((e) => brideEvents[e.id]?.enabled).map((evt) => {
+                            const cfg = brideEvents[evt.id];
+                            return (
+                              <div key={evt.id} className="pdf-ceremony-item p-2.5 text-xs">
+                                <div className="flex justify-between items-center mb-1 pb-1 border-b border-stone-100">
+                                  <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rosewood-600 shrink-0"></span>
+                                    {isMl ? evt.nameMl : evt.nameEn}
+                                  </span>
+                                  <span className="text-[11px] text-stone-500 font-medium">
+                                    {cfg.date ? `Date: ${cfg.date}` : ''} {cfg.venue ? `• Venue: ${cfg.venue}` : ''}
+                                  </span>
+                                </div>
+
+                                {/* 3 Tabular Aligned Columns */}
+                                <div className="grid grid-cols-3 gap-2 text-[11px] bg-[#fbfaf8] p-2 rounded-lg border border-stone-200/80">
+                                  <div className="space-y-0.5">
+                                    <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Photography Crew</span>
+                                    <div className="text-stone-800">
+                                      Traditional: <strong className="text-stone-900">{cfg.traditionalPhotographers || 0} {cfg.traditionalPhotographers > 1 ? `(${cfg.traditionalPhotographers} Cameras)` : ''}</strong>
+                                    </div>
+                                    {cfg.candidPhotographers > 0 && (
+                                      <div className="text-rose-800">
+                                        Candid: <strong className="text-rose-950 font-bold">{cfg.candidPhotographers} {cfg.candidPhotographers > 1 ? `(${cfg.candidPhotographers} Cameras)` : ''}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
+                                    <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Videography Crew</span>
+                                    <div className="text-stone-800">
+                                      Traditional: <strong className="text-stone-900">{cfg.traditionalVideographers || 0} {cfg.traditionalVideographers > 1 ? `(${cfg.traditionalVideographers} Cameras)` : ''}</strong>
+                                    </div>
+                                    {cfg.candidVideographers > 0 && (
+                                      <div className="text-purple-800">
+                                        Cinematic: <strong className="text-purple-950 font-bold">{cfg.candidVideographers} {cfg.candidVideographers > 1 ? `(${cfg.candidVideographers} Cameras)` : ''}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-0.5 border-l border-stone-200/80 pl-2.5">
+                                    <span className="text-[9px] font-black text-stone-400 uppercase tracking-wider block">Special Coverage</span>
+                                    <div className="flex flex-wrap gap-1 pt-0.5">
+                                      {cfg.drone && <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">4K Drone</span>}
+                                      {cfg.auditoriumLive && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded border border-indigo-300">Hall LED Live</span>}
+                                      {cfg.youtubeLive && <span className="text-[10px] font-bold bg-red-100 text-red-900 px-1.5 py-0.5 rounded border border-red-300">YouTube Live</span>}
+                                      {cfg.photoLivePrinting && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-300">Live Print</span>}
+                                      {!cfg.drone && !cfg.auditoriumLive && !cfg.youtubeLive && !cfg.photoLivePrinting && (
+                                        <span className="text-stone-400 text-[10px]">Standard Coverage</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. Output Deliverables & Keepsakes (3 Aligned Columns) */}
+                  {deliverables && (
+                    <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+                      <div className="bg-stone-800 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
+                        <div className="flex items-center gap-2">
+                          <Film className="w-3.5 h-3.5 text-amber-400" />
+                          <span>3. Output Deliverables & Production Keepsakes</span>
+                        </div>
+                        <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
+                          Master Quality
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 bg-white text-xs grid grid-cols-1 sm:grid-cols-3 gap-2.5 divide-y sm:divide-y-0 sm:divide-x divide-stone-100">
+                        {/* Col 1: Video Deliverables */}
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                            Video Production
+                          </span>
+                          <div className="space-y-0.5 text-[11px] text-stone-700">
+                            <p>• Resolution: <strong className="text-stone-900">{deliverables.videoQuality === '4k' ? '4K Ultra HD' : 'Full HD 1080p'}</strong></p>
+                            {deliverables.fullLengthVideo && <p>• Full Length Traditional Video</p>}
+                            {deliverables.highlightVideo && <p>• Cinematic Highlight (3-5 Mins)</p>}
+                            {deliverables.teaserVideo && <p>• Cinematic Teaser Promo</p>}
+                            {deliverables.reelsCount > 0 && <p>• {deliverables.reelsCount} Instagram Viral Reels</p>}
+                          </div>
+                        </div>
+
+                        {/* Col 2: Photos & Albums */}
+                        <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                            Photos & Albums
+                          </span>
+                          <div className="space-y-0.5 text-[11px] text-stone-700">
+                            <p>• Color Graded Photos: <strong className="text-stone-900">{deliverables.gradedPhotosCount ?? 100} Photos</strong></p>
+                            {deliverables.mainAlbumsCount > 0 ? (
+                              <>
+                                <p>• Main Albums: <strong className="text-stone-900">{deliverables.mainAlbumsCount} Nos</strong></p>
+                                <p>• Sheets/Pages: <strong className="text-stone-900">{deliverables.mainAlbumSheets} Sheets</strong></p>
+                                <p>• Album Cover: <strong className="capitalize text-stone-900">{getAlbumCoverTitle(deliverables.albumPaperType)}</strong></p>
+                              </>
+                            ) : (
+                              <p className="text-stone-400">Digital Deliverables Only</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Col 3: Keepsakes & Frames */}
+                        <div className="pt-2 sm:pt-0 sm:pl-3 space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block">
+                            Frames & Keepsakes
+                          </span>
+                          <div className="space-y-0.5 text-[11px] text-stone-700">
+                            {deliverables.frames_8x12 > 0 && <p>• 8x12 Frame: {deliverables.frames_8x12} Nos</p>}
+                            {deliverables.frames_18x12 > 0 && <p>• 18x12 Frame: {deliverables.frames_18x12} Nos</p>}
+                            {deliverables.frames_15x20 > 0 && <p>• 15x20 Canvas: {deliverables.frames_15x20} Nos</p>}
+                            {deliverables.penDriveCount > 0 && <p>• USB 3.0 Pen Drives: {deliverables.penDriveCount} Nos</p>}
+                            {deliverables.penDriveBoxCount > 0 && <p>• Wooden Keepsake Boxes: {deliverables.penDriveBoxCount} Nos</p>}
+                            {deliverables.miniAlbumsCount > 0 && <p>• Mini Albums: {deliverables.miniAlbumsCount} Nos</p>}
+                            {customPrintItems?.map((it) => {
+                              const count = deliverables.customPrintCounts?.[it.id] ?? (deliverables as any)[it.id] ?? 0;
+                              if (!count || count <= 0) return null;
+                              return (
+                                <p key={it.id}>• {it.nameEn}: {count} {it.unitName || 'Nos'}</p>
+                              );
+                            })}
+                            {!deliverables.frames_8x12 &&
+                              !deliverables.frames_18x12 &&
+                              !deliverables.frames_15x20 &&
+                              !deliverables.penDriveCount &&
+                              !deliverables.penDriveBoxCount &&
+                              !deliverables.miniAlbumsCount &&
+                              (!deliverables.customPrintCounts ||
+                                Object.values(deliverables.customPrintCounts).every((v) => !v)) && (
+                                <p className="text-stone-400">Standard Cloud Delivery</p>
+                              )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. Other Wedding Services (Food / Catering, Stage Decor, Makeup, Cars, etc.) */}
+                  {selectedServices && selectedServices.length > 0 && (
+                    <div className="pdf-section break-inside-avoid border border-stone-200 rounded-xl overflow-hidden shadow-2xs">
+                      <div className="bg-stone-800 text-white px-3.5 py-1.5 flex items-center justify-between font-extrabold text-xs">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span>4. Other Wedding Services & Event Arrangements</span>
+                        </div>
+                        <span className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-full">
+                          {selectedServices.length} Services Selected
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 bg-white text-xs divide-y divide-stone-100">
+                        {selectedServices.map((svc, i) => (
+                          <div key={i} className="pdf-service-item py-2 flex justify-between items-start text-[11px]">
+                            <div>
+                              <span className="font-bold text-stone-900 block">
+                                {svc.title} ({svc.titleMl})
+                              </span>
+                              <div className="flex flex-wrap gap-2 text-[10px] text-stone-600 mt-0.5">
+                                {svc.guestCount ? (
+                                  <span className="font-semibold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                    Guest Count: {svc.guestCount} Persons
+                                  </span>
+                                ) : null}
+                                {svc.cardCount ? (
+                                  <span className="font-semibold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                    Total Cards: {svc.cardCount} Nos
+                                  </span>
+                                ) : null}
+                                {svc.customSelections && svc.customSelections.length > 0 && (
+                                  <span className="text-stone-500">
+                                    Inclusions: {svc.customSelections.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <span className="font-black text-stone-900 shrink-0 ml-3 tabular-nums">
+                              ₹{svc.price.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* 5. Commercial Summary & Divided Payment Milestones (2 Aligned Columns) */}
-              <div className="pdf-section break-inside-avoid grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t-2 border-stone-900">
+              <div data-pdf-block="atomic" className="pdf-section break-inside-avoid grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t-2 border-stone-900">
+
                 {/* Left: Payment Milestones */}
                 <div className="bg-[#faf9f6] p-2.5 rounded-xl border border-stone-200 space-y-1">
                   <div className="flex items-center gap-1.5 text-stone-900 font-extrabold text-xs uppercase tracking-wider">
@@ -854,6 +1338,20 @@ Email: ${lead.email || 'N/A'}`;
                       <span className="font-bold text-stone-900 tabular-nums">₹{baseSubtotal.toLocaleString('en-IN')}</span>
                     </div>
 
+                    {appliedCoupon && couponDiscountAmount > 0 && (
+                      <div className="flex justify-between text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-[11px] font-semibold">
+                        <span>Coupon Discount ({appliedCoupon.code} - {appliedCoupon.discountPercentage}%):</span>
+                        <span className="font-bold tabular-nums">-₹{couponDiscountAmount.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
+                    {appliedCoupon && couponDiscountAmount > 0 && (
+                      <div className="flex justify-between text-stone-600 text-[11px]">
+                        <span>Subtotal After Discount:</span>
+                        <span className="font-bold text-stone-900 tabular-nums">₹{discountedSubtotal.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+
                     <div className="flex justify-between text-stone-600 text-[11px]">
                       <span>Goods & Services Tax (GST 18%):</span>
                       <span className="font-bold text-stone-900 tabular-nums">₹{taxAmount.toLocaleString('en-IN')}</span>
@@ -870,14 +1368,14 @@ Email: ${lead.email || 'N/A'}`;
 
                   {/* Studio Contact info */}
                   <div className="p-2 bg-amber-50/80 border border-amber-200/90 rounded-lg text-[10px] text-amber-950 flex justify-between items-center">
-                    <span className="font-bold">Framelu Helpdesk:</span>
-                    <span>WhatsApp: +{studioContact.whatsapp} • Tel: {studioContact.phone}</span>
+                    <span className="font-bold">{displayBrandName}:</span>
+                    <span>Tel: {displayPhone} • WhatsApp: +{studioContact.whatsapp}</span>
                   </div>
                 </div>
               </div>
 
               {/* 6. Terms & Conditions and Formal Signatures */}
-              <div className="pdf-section break-inside-avoid pt-2 border-t border-stone-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div data-pdf-block="atomic" className="pdf-section break-inside-avoid pt-2 border-t border-stone-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 {/* Terms */}
                 <div className="text-[9px] text-stone-500 space-y-0.5">
                   <p className="font-bold text-stone-700 uppercase tracking-wider text-[9px]">Terms & Conditions:</p>
@@ -894,16 +1392,16 @@ Email: ${lead.email || 'N/A'}`;
                     <p className="mt-1 text-[9px] font-medium text-stone-600">({lead.name})</p>
                   </div>
                   <div>
-                    <p className="font-bold text-stone-800 text-[10px]">FRAMELU WEDDING COMPANY</p>
+                    <p className="font-bold text-stone-800 text-[10px] uppercase truncate px-1">{displayBrandName}</p>
                     <div className="mt-4 border-b border-stone-300 w-3/4 mx-auto"></div>
-                    <p className="mt-1 text-[9px] font-bold text-amber-800">Authorized Signatory & Seal</p>
+                    <p className="mt-1 text-[9px] font-bold text-amber-800">{displaySignatory}</p>
                   </div>
                 </div>
               </div>
 
               {/* Document Footer */}
-              <div className="pdf-section break-inside-avoid pt-2 mt-auto border-t border-stone-200 flex justify-between items-center text-[9px] text-stone-400 font-semibold tracking-wider uppercase">
-                <span>FRAMELU WEDDING COMPANY • OFFICIAL ESTIMATE PROPOSAL</span>
+              <div data-pdf-block="atomic" className="pdf-section break-inside-avoid pt-2 mt-auto border-t border-stone-200 flex justify-between items-center text-[9px] text-stone-400 font-semibold tracking-wider uppercase">
+                <span className="truncate max-w-[60%]">{displayBrandName} • OFFICIAL ESTIMATE PROPOSAL</span>
                 <span>ALL-INCLUSIVE PROPOSAL • {quoteNo}</span>
               </div>
             </div>

@@ -138,10 +138,11 @@ export const OffersAndHighlightBoards: React.FC<OffersAndHighlightBoardsProps> =
           {highlightBoards.map((board) => (
             <div
               key={board.id}
-              className={`rounded-3xl border p-6 sm:p-7 shadow-sm transition-all duration-300 flex flex-col justify-between relative ${
+              onClick={() => onSelectBoard(board)}
+              className={`rounded-3xl border p-6 sm:p-7 shadow-sm transition-all duration-300 flex flex-col justify-between relative cursor-pointer select-none group hover:-translate-y-1 ${
                 board.popular
-                  ? 'bg-gradient-to-b from-amber-50/70 via-white to-white border-amber-400 ring-2 ring-amber-400/30 shadow-md'
-                  : 'bg-white border-stone-200 hover:shadow-md'
+                  ? 'bg-gradient-to-b from-amber-50/70 via-white to-white border-amber-400 ring-2 ring-amber-400/30 shadow-md hover:shadow-xl'
+                  : 'bg-white border-stone-200 hover:border-amber-300 hover:shadow-md'
               }`}
             >
               {board.popular && (
@@ -155,7 +156,7 @@ export const OffersAndHighlightBoards: React.FC<OffersAndHighlightBoardsProps> =
                   {board.tag}
                 </span>
 
-                <h3 className="text-xl font-black text-stone-900">
+                <h3 className="text-xl font-black text-stone-900 group-hover:text-amber-800 transition">
                   {isMl ? board.titleMl || board.title : board.title}
                 </h3>
                 <p className="text-xs text-stone-500 mt-1 leading-relaxed">
@@ -190,8 +191,11 @@ export const OffersAndHighlightBoards: React.FC<OffersAndHighlightBoardsProps> =
               <div className="space-y-2 pt-2 border-t border-stone-100">
                 <button
                   type="button"
-                  onClick={() => onSelectBoard(board)}
-                  className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold py-3 px-4 rounded-xl shadow-md transition text-xs sm:text-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectBoard(board);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold py-3 px-4 rounded-xl shadow-md transition text-xs sm:text-sm active:scale-95 cursor-pointer"
                 >
                   <span>{isMl ? 'ഈ പാക്കേജ് കസ്റ്റമൈസ് ചെയ്യുക' : 'Customize This Package'}</span>
                   <ArrowRight className="w-4 h-4" />
@@ -203,7 +207,8 @@ export const OffersAndHighlightBoards: React.FC<OffersAndHighlightBoardsProps> =
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-2.5 px-3 rounded-xl border border-emerald-200 transition text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold py-2.5 px-3 rounded-xl border border-emerald-200 transition text-xs cursor-pointer"
                 >
                   <MessageCircle className="w-3.5 h-3.5" />
                   <span>{isMl ? 'WhatsApp എൻക്വയറി' : 'WhatsApp Enquiry'}</span>

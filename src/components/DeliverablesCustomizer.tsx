@@ -18,6 +18,9 @@ import {
   Minus,
   Check,
   Sparkles,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface DeliverablesCustomizerProps {
@@ -26,6 +29,7 @@ interface DeliverablesCustomizerProps {
   rates: PriceRates;
   customPrintItems?: CustomPrintItem[];
   language?: 'en' | 'ml';
+  onNavigateToOtherServices?: () => void;
 }
 
 export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
@@ -34,6 +38,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
   rates,
   customPrintItems = DEFAULT_CUSTOM_PRINTS,
   language = 'en',
+  onNavigateToOtherServices,
 }) => {
   const isMl = language === 'ml';
 
@@ -48,7 +53,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-7 shadow-sm mb-8">
+    <div id="deliverables-customizer-section" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-7 shadow-sm mb-8 scroll-mt-24">
       {/* Section Header */}
       <div className="mb-6 pb-6 border-b border-stone-200">
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-rosewood-100 text-rosewood-800 mb-2">
@@ -109,20 +114,20 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
                   onClick={() => updateField('videoQuality', 'hd')}
                   className={`p-3.5 rounded-xl border text-left font-bold text-sm transition flex items-center justify-between ${
                     deliverables.videoQuality === 'hd'
-                      ? 'border-stone-900 bg-stone-900 text-white shadow-xs'
+                      ? 'border-amber-600 bg-amber-50 text-amber-900 shadow-xs ring-1 ring-amber-400'
                       : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'
                   }`}
                 >
                   <div>
                     <span className="block text-sm sm:text-base font-black">Full HD (1080p)</span>
-                    <span className="text-[10px] opacity-80 font-medium block">
+                    <span className="text-[10px] text-stone-500 font-medium block">
                       {isMl ? 'സ്റ്റാൻഡേർഡ് ക്ലാരിറ്റി' : 'Standard 1080p Master'}
                     </span>
-                    <span className="text-xs font-semibold opacity-90 block mt-1">
-                      {isMl ? 'ബേസ് പാക്കേജ്' : 'Base Included'}
+                    <span className="text-xs font-black text-emerald-700 block mt-1">
+                      {isMl ? '✓ ബേസ് പാക്കേജ്' : '✓ Base Included'}
                     </span>
                   </div>
-                  {deliverables.videoQuality === 'hd' && <Check className="w-4 h-4 text-white shrink-0" />}
+                  {deliverables.videoQuality === 'hd' && <Check className="w-4 h-4 text-amber-600 shrink-0" />}
                 </button>
               </div>
             </div>
@@ -204,8 +209,8 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
             </div>
           </div>
 
-          {/* Reels & Media Delivery - Upgraded Roomy Steppers */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Reels, Media Delivery & Photo Grading - Upgraded Roomy Steppers */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Reels Counter */}
             <div className="p-4 bg-white rounded-2xl border border-stone-200 flex flex-col justify-between shadow-2xs">
               <div>
@@ -251,6 +256,81 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
+              </div>
+            </div>
+
+            {/* Color Graded Photos (Requirement 2: Number of Photo Graded) */}
+            <div className="p-4 bg-white rounded-2xl border-2 border-amber-300 flex flex-col justify-between shadow-2xs bg-gradient-to-br from-amber-50/50 via-white to-amber-50/20">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <span className="text-xs font-black text-amber-700">
+                    ₹{(rates.photoGradingRate || 30).toLocaleString('en-IN')}/{isMl ? 'ഫോട്ടോ' : 'photo'}
+                  </span>
+                </div>
+                <h5 className="text-xs font-bold text-stone-900">
+                  {isMl ? 'നമ്പർ ഓഫ് ഫോട്ടോ ഗ്രേഡർ' : 'Color Graded Photos'}
+                </h5>
+                <p className="text-[10px] text-stone-500 mt-0.5">
+                  {isMl ? 'മാഗസിൻ-ഗ്രേഡ് ടോണിംഗ് & കളർ തിയറി' : 'Aesthetic skin-tone & magazine grading'}
+                </p>
+              </div>
+
+              <div>
+                <div className="mt-3.5 pt-3 border-t border-stone-100 flex items-center justify-between bg-white rounded-xl p-1.5 border border-amber-200">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateField('gradedPhotosCount', Math.max(0, (deliverables.gradedPhotosCount || 0) - 25))
+                    }
+                    disabled={(deliverables.gradedPhotosCount || 0) <= 0}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition ${
+                      (deliverables.gradedPhotosCount || 0) > 0
+                        ? 'bg-stone-100 hover:bg-stone-200 text-stone-800 shadow-xs'
+                        : 'bg-stone-100/50 text-stone-300 cursor-not-allowed'
+                    }`}
+                    aria-label="Decrease graded photos count"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="text-center">
+                    <span className="text-sm font-black text-amber-900 block leading-tight">
+                      {deliverables.gradedPhotosCount || 0}
+                    </span>
+                    <span className="text-[9px] font-bold text-stone-400 uppercase">
+                      {isMl ? 'ഫോട്ടോകൾ' : 'Photos'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateField('gradedPhotosCount', (deliverables.gradedPhotosCount || 0) + 25)
+                    }
+                    className="w-8 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center font-bold shadow-xs transition"
+                    aria-label="Increase graded photos count"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-center gap-1 mt-1.5">
+                  {[50, 100, 150, 200].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => updateField('gradedPhotosCount', preset)}
+                      className={`text-[9px] font-black px-1.5 py-0.5 rounded border transition ${
+                        deliverables.gradedPhotosCount === preset
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-stone-50 hover:bg-stone-100 text-stone-600 border-stone-200'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -781,6 +861,37 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
             })}
           </div>
         </div>
+      </div>
+
+      {/* Guided Sequential Navigation at Bottom (Requirement 4) */}
+      <div className="mt-10 pt-6 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById('wedding-customizer-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white hover:bg-stone-100 border border-stone-200 text-stone-700 font-bold text-xs sm:text-sm shadow-2xs transition"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>{isMl ? '← ചടങ്ങുകൾ & ക്രൂ പരിശോധിക്കുക' : '← Back to Ceremonies & Crew'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (onNavigateToOtherServices) {
+              onNavigateToOtherServices();
+            } else {
+              const el = document.getElementById('other-services-section');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }
+          }}
+          className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-black text-xs sm:text-sm shadow-lg transition active:scale-98"
+        >
+          <span>{isMl ? 'മറ്റ് സർവീസുകൾ തിരഞ്ഞെടുക്കാം (ഫുഡ്, ഡെക്കോർ, കാർഡുകൾ) ✨' : 'Next: Other Wedding Services (Food, Decor, Cards) ✨'}</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );

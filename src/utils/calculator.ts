@@ -1,9 +1,9 @@
-import { EventCrewConfig, DeliverablesConfig, PriceRates, SideSelection, EventId, CustomPrintItem } from '@/types';
+import { EventCrewConfig, DeliverablesConfig, PriceRates, SideSelection, EventId, CustomPrintItem, SelectedOtherService } from '@/types';
 import { KERALA_EVENTS } from '@/constants/defaults';
 
 export interface BreakdownItem {
   id: string;
-  category: 'groom_crew' | 'bride_crew' | 'video' | 'album' | 'frames' | 'merch';
+  category: 'groom_crew' | 'bride_crew' | 'video' | 'album' | 'frames' | 'merch' | 'other_service' | string;
   title: string;
   titleMl: string;
   qty: number;
@@ -19,7 +19,13 @@ export interface CalculationResult {
   deliverablesTotal: number;
   groomCrewTotal: number;
   brideCrewTotal: number;
+  photographyTotal: number;
+  otherServicesTotal: number;
+  packageDiscount?: number;
+  activePackageTitle?: string;
+  activePackageTitleMl?: string;
 }
+
 
 export function calculateCustomQuote(
   side: SideSelection,
@@ -27,12 +33,18 @@ export function calculateCustomQuote(
   brideEvents: Record<EventId, EventCrewConfig>,
   deliverables: DeliverablesConfig,
   rates: PriceRates,
-  customPrintItems?: CustomPrintItem[]
+  customPrintItems?: CustomPrintItem[],
+  selectedOtherServices?: SelectedOtherService[],
+  packageDiscount?: number,
+  activePackageTitle?: string,
+  activePackageTitleMl?: string
 ): CalculationResult {
   const items: BreakdownItem[] = [];
   const eventTotals: Record<string, number> = {};
   let groomCrewTotal = 0;
   let brideCrewTotal = 0;
+  let otherServicesTotal = 0;
+
 
   // 1. Groom Side Events
   if (side === 'groom' || side === 'both') {
@@ -367,6 +379,23 @@ export function calculateCustomQuote(
     });
   }
 
+  // Color Graded Photos (Requirement 2)
+  if (deliverables.gradedPhotosCount > 0) {
+    const gradingRate = rates.photoGradingRate || 30;
+    const cost = deliverables.gradedPhotosCount * gradingRate;
+    deliverablesTotal += cost;
+    items.push({
+      id: 'graded_photos',
+      category: 'merch',
+      title: `Color Graded Professional Photos (${deliverables.gradedPhotosCount} Photos)`,
+      titleMl: `കളർ ഗ്രേഡഡ് ഫോട്ടോകൾ (${deliverables.gradedPhotosCount} എണ്ണം)`,
+      qty: deliverables.gradedPhotosCount,
+      unitPrice: gradingRate,
+      totalPrice: cost,
+      deletable: true,
+    });
+  }
+
   // Media
   if (deliverables.penDriveCount > 0) {
     const cost = deliverables.penDriveCount * rates.penDriveRate;
@@ -577,7 +606,57 @@ export function calculateCustomQuote(
     }
   }
 
-  const grandTotal = groomCrewTotal + brideCrewTotal + deliverablesTotal;
+  // 4. Other Selected Services (Food/Catering, Decor, Makeup, Cards, etc.)
+  if (selectedOtherServices && selectedOtherServices.length > 0) {
+    for (const svc of selectedOtherServices) {
+      const cost = svc.price || 0;
+      otherServicesTotal += cost;
+      
+      const countLabel = svc.guestCount
+        ? ` (${svc.guestCount} Guests / അതിഥികൾ)`
+        : svc.cardCount
+        ? ` (${svc.cardCount} Cards / കാർഡുകൾ)`
+        : '';
+
+      const customSub = svc.customSelections && svc.customSelections.length > 0
+        ? ` [${svc.customSelections.join(', ')}]`
+        : '';
+
+      const qty = svc.guestCount || svc.cardCount || 1;
+      const unitPrice = svc.unitPrice || Math.round(cost / qty);
+
+      items.push({
+        id: `other_service_${svc.packageId}`,
+        category: 'other_service',
+        title: `${svc.title}${countLabel}${customSub}`,
+        titleMl: `${svc.titleMl}${countLabel}${customSub}`,
+        qty,
+        unitPrice,
+        totalPrice: cost,
+        deletable: true,
+      });
+    }
+  }
+
+  // 5. Apply Package Combo Discount if a popular package is active
+  const rawPhotographyTotal = groomCrewTotal + brideCrewTotal + deliverablesTotal;
+  const validDiscount = packageDiscount && packageDiscount > 0 ? Math.min(packageDiscount, rawPhotographyTotal) : 0;
+  
+  if (validDiscount > 0) {
+    items.push({
+      id: 'package_combo_savings',
+      category: 'discount',
+      title: `Special Package Combo Discount (${activePackageTitle || 'Selected Plan'})`,
+      titleMl: `പാക്കേജ് കോംബോ പ്രത്യേക സേവിംഗ്സ് (${activePackageTitleMl || activePackageTitle || 'തിരഞ്ഞെടുത്ത പ്ലാൻ'})`,
+      qty: 1,
+      unitPrice: -validDiscount,
+      totalPrice: -validDiscount,
+      deletable: false,
+    });
+  }
+
+  const photographyTotal = Math.max(0, rawPhotographyTotal - validDiscount);
+  const grandTotal = photographyTotal + otherServicesTotal;
 
   return {
     totalPrice: grandTotal,
@@ -586,5 +665,11 @@ export function calculateCustomQuote(
     deliverablesTotal,
     groomCrewTotal,
     brideCrewTotal,
+    photographyTotal,
+    otherServicesTotal,
+    packageDiscount: validDiscount,
+    activePackageTitle,
+    activePackageTitleMl,
   };
 }
+

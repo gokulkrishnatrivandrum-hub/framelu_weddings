@@ -794,72 +794,131 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
         })}
       </div>
 
-      {/* Guided Side Switch / Bridal Room Remaining Completion Banner */}
-      {side === 'both' && (
-        <div className="mt-8 pt-6 border-t border-stone-200">
-          {activeSideTab === 'bride' ? (
-            <div className="bg-gradient-to-r from-amber-50 via-rosewood-50 to-amber-50 p-4 sm:p-5 rounded-2xl border border-rosewood-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+      {/* Guided Sequential Navigation at Bottom (Requirement 4) */}
+      <div className="mt-8 pt-6 border-t border-stone-200">
+        {side === 'both' ? (
+          activeSideTab === 'bride' ? (
+            <div className="bg-gradient-to-r from-amber-50 via-rosewood-50 to-amber-50 p-4 sm:p-5 rounded-3xl border border-rosewood-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
               <div>
-                <p className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+                <p className="text-sm font-black text-stone-900 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>
                     {isMl
-                      ? `വധുവിന്റെ ഭാഗം പൂർത്തിയായി (${activeBrideCount} ചടങ്ങുകൾ സജീവം)`
-                      : `Bride Side configured (${activeBrideCount} events active)`}
+                      ? `👰 വധുവിന്റെ ഭാഗം ക്രമീകരിച്ചു (${activeBrideCount} ചടങ്ങുകൾ സജീവം)`
+                      : `👰 Bride Side Configured (${activeBrideCount} events active)`}
                   </span>
                 </p>
                 <p className="text-xs text-stone-600 mt-0.5">
                   {isMl
-                    ? 'ഇനി വരന്റെ ഭാഗത്തെ ചടങ്ങുകളും ക്രൂവും പരിശോധിക്കാനായി താഴെ ക്ലിക്ക് ചെയ്യുക'
-                    : 'Now proceed to customize and verify Groom side events and crew'}
+                    ? 'ഇനി ആൽബങ്ങളും വീഡിയോ ഔട്ട്പുട്ടുകളും തിരഞ്ഞെടുക്കാൻ താഴെ ക്ലിക്ക് ചെയ്യുക'
+                    : 'Now proceed to customize 4K/HD videos, photo albums, and frames'}
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveSideTab('groom');
-                  window.scrollTo({ top: 380, behavior: 'smooth' });
-                }}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm shadow-md transition"
-              >
-                <span>{isMl ? 'വരന്റെ ഭാഗം ക്രമീകരിക്കാം (Continue to Groom Side)' : 'Proceed to Groom Side'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSideTab('groom');
+                    const el = document.getElementById('wedding-customizer-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-1/2 sm:w-auto flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-white hover:bg-stone-100 border border-stone-300 text-stone-700 font-bold text-xs shadow-2xs transition"
+                >
+                  <ArrowRight className="w-4 h-4 rotate-180" />
+                  <span>{isMl ? '🤵 വരന്റെ ഭാഗം' : 'Groom Side'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('deliverables-customizer-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-1/2 sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-black text-xs sm:text-sm shadow-md transition active:scale-98"
+                >
+                  <span>{isMl ? 'ഡെലിവറബിൾസിലേക്ക് (Deliverables) 📦' : 'Next: Deliverables 📦'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="bg-gradient-to-r from-amber-50 via-rosewood-50 to-amber-50 p-4 sm:p-5 rounded-2xl border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="bg-gradient-to-r from-amber-50 via-rosewood-50 to-amber-50 p-4 sm:p-5 rounded-3xl border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
               <div>
-                <p className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+                <p className="text-sm font-black text-stone-900 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   <span>
                     {isMl
-                      ? `വരന്റെ ഭാഗം പൂർത്തിയായി (${activeGroomCount} ചടങ്ങുകൾ സജീവം)`
-                      : `Groom Side configured (${activeGroomCount} events active)`}
+                      ? `🤵 വരന്റെ ഭാഗം ക്രമീകരിച്ചു (${activeGroomCount} ചടങ്ങുകൾ സജീവം)`
+                      : `🤵 Groom Side Configured (${activeGroomCount} events active)`}
                   </span>
                 </p>
                 <p className="text-xs text-stone-600 mt-0.5">
                   {isMl
-                    ? 'വധുവിന്റെ ഭാഗത്തെ ചടങ്ങുകളും ക്രൂവും ക്രമീകരിക്കാനായി താഴെ ക്ലിക്ക് ചെയ്യുക'
-                    : 'Switch to customize and verify Bride side events and crew'}
+                    ? 'അടുത്തതായി വധുവിന്റെ ഭാഗത്തെ ചടങ്ങുകളും ക്രൂവും ക്രമീകരിക്കാം'
+                    : 'Next step: configure Bride side ceremonies, crew, and drone'}
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveSideTab('bride');
-                  window.scrollTo({ top: 380, behavior: 'smooth' });
-                }}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-rosewood-600 hover:bg-rosewood-700 text-white font-bold text-xs sm:text-sm shadow-md transition"
-              >
-                <span>{isMl ? 'വധുവിന്റെ ഭാഗം ക്രമീകരിക്കാം (Switch to Bride Side)' : 'Switch to Bride Side'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('deliverables-customizer-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-1/2 sm:w-auto flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-white hover:bg-stone-100 border border-stone-300 text-stone-700 font-bold text-xs shadow-2xs transition"
+                >
+                  <span>{isMl ? 'സ്കിപ്പ് & ഡെലിവറബിൾസ്' : 'Skip to Deliverables'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSideTab('bride');
+                    const el = document.getElementById('wedding-customizer-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-1/2 sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-rosewood-600 to-rosewood-700 hover:from-rosewood-700 hover:to-rosewood-800 text-white font-black text-xs sm:text-sm shadow-md transition active:scale-98"
+                >
+                  <span>{isMl ? 'വധുവിന്റെ ഭാഗം ക്രമീകരിക്കാം 👰' : 'Next: Bride Side 👰'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          )
+        ) : (
+          <div className="bg-gradient-to-r from-amber-50 via-white to-amber-50 p-4 sm:p-5 rounded-3xl border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+            <div>
+              <p className="text-sm font-black text-stone-900 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>
+                  {isMl
+                    ? 'ചടങ്ങുകൾ വിജയകരമായി ക്രമീകരിച്ചു'
+                    : 'Ceremonies & Crew Configured'}
+                </span>
+              </p>
+              <p className="text-xs text-stone-600 mt-0.5">
+                {isMl
+                  ? 'ഇനി ആൽബങ്ങളും വീഡിയോ ക്വാളിറ്റിയും തിരഞ്ഞെടുക്കാനായി താഴെ ക്ലിക്ക് ചെയ്യുക'
+                  : 'Proceed to select video quality, photo albums, frames, and keepsakes'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('deliverables-customizer-section');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-black text-xs sm:text-sm shadow-md transition active:scale-98"
+            >
+              <span>{isMl ? 'ഡെലിവറബിൾസിലേക്ക് (Deliverables) 📦' : 'Next: Deliverables 📦'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

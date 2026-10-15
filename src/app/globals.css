@@ -189,7 +189,10 @@
   /* Prevent split cuts inside logical units */
   .pdf-page > div,
   .pdf-section,
-  .break-inside-avoid {
+  .break-inside-avoid,
+  .pdf-ceremony-item,
+  .pdf-service-item,
+  [data-pdf-block] {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }

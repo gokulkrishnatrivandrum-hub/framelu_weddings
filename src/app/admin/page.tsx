@@ -9,6 +9,11 @@ import {
   PromoOffer,
   HighlightBoard,
   CustomPrintItem,
+  OtherServicePackage,
+  ServiceCategory,
+  GalleryProject,
+  CouponCode,
+  PhotoshootConfig,
 } from '@/types';
 import {
   DEFAULT_RATES,
@@ -16,8 +21,26 @@ import {
   DEFAULT_OFFERS,
   DEFAULT_HIGHLIGHT_BOARDS,
   DEFAULT_CUSTOM_PRINTS,
+  DEFAULT_OTHER_SERVICES,
+  DEFAULT_SERVICE_CATEGORIES,
+  DEFAULT_GALLERY_PROJECTS,
+  DEFAULT_COUPONS,
+  DEFAULT_PHOTOSHOOTS,
 } from '@/constants/defaults';
 import { AdminDashboard } from '@/components/AdminDashboard';
+import {
+  subscribeStudioContact,
+  subscribePriceRates,
+  subscribeCustomPrints,
+  subscribePromoOffers,
+  subscribeHighlightBoards,
+  subscribeOtherServices,
+  subscribeServiceCategories,
+  subscribeCustomerLeads,
+  subscribeGalleryProjects,
+  subscribeCoupons,
+  subscribePhotoshoots,
+} from '@/lib/firestoreSync';
 import {
   Camera,
   Lock,
@@ -45,6 +68,11 @@ export default function AdminPage() {
   const [offers, setOffers] = useState<PromoOffer[]>(DEFAULT_OFFERS);
   const [highlightBoards, setHighlightBoards] = useState<HighlightBoard[]>(DEFAULT_HIGHLIGHT_BOARDS);
   const [customPrintItems, setCustomPrintItems] = useState<CustomPrintItem[]>(DEFAULT_CUSTOM_PRINTS);
+  const [otherServices, setOtherServices] = useState<OtherServicePackage[]>(DEFAULT_OTHER_SERVICES);
+  const [categories, setCategories] = useState<ServiceCategory[]>(DEFAULT_SERVICE_CATEGORIES);
+  const [galleryProjects, setGalleryProjects] = useState<GalleryProject[]>(DEFAULT_GALLERY_PROJECTS);
+  const [coupons, setCoupons] = useState<CouponCode[]>(DEFAULT_COUPONS);
+  const [photoshoots, setPhotoshoots] = useState<PhotoshootConfig[]>(Object.values(DEFAULT_PHOTOSHOOTS));
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -54,7 +82,7 @@ export default function AdminPage() {
         setIsAuthenticated(true);
       }
 
-      // Load custom prints
+      // Load custom prints from local cache
       const savedCustomPrints = localStorage.getItem('framlu_wedding_custom_prints');
       if (savedCustomPrints) {
         try {
@@ -64,7 +92,7 @@ export default function AdminPage() {
         }
       }
 
-      // Load rates
+      // Load rates from local cache
       const savedRates = localStorage.getItem('framlu_wedding_rates') || localStorage.getItem('lumina_wedding_rates');
       if (savedRates) {
         try {
@@ -74,7 +102,7 @@ export default function AdminPage() {
         }
       }
 
-      // Load contact
+      // Load contact from local cache
       const savedContact = localStorage.getItem('framlu_wedding_contact') || localStorage.getItem('lumina_wedding_contact');
       if (savedContact) {
         try {
@@ -84,7 +112,7 @@ export default function AdminPage() {
         }
       }
 
-      // Load offers
+      // Load offers from local cache
       const savedOffers = localStorage.getItem('framlu_wedding_offers') || localStorage.getItem('lumina_wedding_offers');
       if (savedOffers) {
         try {
@@ -94,7 +122,7 @@ export default function AdminPage() {
         }
       }
 
-      // Load boards
+      // Load boards from local cache
       const savedBoards = localStorage.getItem('framlu_wedding_boards') || localStorage.getItem('lumina_wedding_boards');
       if (savedBoards) {
         try {
@@ -104,7 +132,27 @@ export default function AdminPage() {
         }
       }
 
-      // Load leads
+      // Load other services from local cache
+      const savedServices = localStorage.getItem('framlu_other_services');
+      if (savedServices) {
+        try {
+          setOtherServices(JSON.parse(savedServices));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Load categories from local cache
+      const savedCategories = localStorage.getItem('framlu_service_categories');
+      if (savedCategories) {
+        try {
+          setCategories(JSON.parse(savedCategories));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Load leads from local cache
       const savedLeads = localStorage.getItem('framlu_wedding_leads') || localStorage.getItem('lumina_wedding_leads');
       if (savedLeads) {
         try {
@@ -113,8 +161,68 @@ export default function AdminPage() {
           console.error(e);
         }
       }
+
+      // Load gallery projects from local cache
+      const savedGallery = localStorage.getItem('framlu_gallery_projects');
+      if (savedGallery) {
+        try {
+          setGalleryProjects(JSON.parse(savedGallery));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Load coupons from local cache
+      const savedCoupons = localStorage.getItem('framlu_coupons');
+      if (savedCoupons) {
+        try {
+          setCoupons(JSON.parse(savedCoupons));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Load photoshoots from local cache
+      const savedPhotoshoots = localStorage.getItem('framlu_wedding_photoshoots');
+      if (savedPhotoshoots) {
+        try {
+          setPhotoshoots(JSON.parse(savedPhotoshoots));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Real-time Cloud Subscriptions (Syncs live across all devices)
+      const unsubContact = subscribeStudioContact((data) => setStudioContact(data));
+      const unsubRates = subscribePriceRates((data) => setRates(data));
+      const unsubPrints = subscribeCustomPrints((items) => setCustomPrintItems(items));
+      const unsubOffers = subscribePromoOffers((items) => setOffers(items));
+      const unsubBoards = subscribeHighlightBoards((items) => setHighlightBoards(items));
+      const unsubServices = subscribeOtherServices((items) => setOtherServices(items));
+      const unsubCategories = subscribeServiceCategories((items) => setCategories(items));
+      const unsubLeads = subscribeCustomerLeads((items) => setLeads(items));
+      const unsubGallery = subscribeGalleryProjects((data) => setGalleryProjects(data));
+      const unsubCoupons = subscribeCoupons((data) => setCoupons(data));
+      const unsubPhotoshoots = subscribePhotoshoots((data) => {
+        if (data && data.length > 0) setPhotoshoots(data);
+      });
+
+      return () => {
+        unsubContact && unsubContact();
+        unsubRates && unsubRates();
+        unsubPrints && unsubPrints();
+        unsubOffers && unsubOffers();
+        unsubBoards && unsubBoards();
+        unsubServices && unsubServices();
+        unsubCategories && unsubCategories();
+        unsubLeads && unsubLeads();
+        unsubGallery && unsubGallery();
+        unsubCoupons && unsubCoupons();
+        unsubPhotoshoots && unsubPhotoshoots();
+      };
     }
   }, []);
+
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -320,6 +428,16 @@ export default function AdminPage() {
         setHighlightBoards={setHighlightBoards}
         customPrintItems={customPrintItems}
         setCustomPrintItems={setCustomPrintItems}
+        otherServices={otherServices}
+        setOtherServices={setOtherServices}
+        categories={categories}
+        setCategories={setCategories}
+        galleryProjects={galleryProjects}
+        setGalleryProjects={setGalleryProjects}
+        coupons={coupons}
+        setCoupons={setCoupons}
+        photoshoots={photoshoots}
+        setPhotoshoots={setPhotoshoots}
         onCloseAdmin={handleLogout}
         language="en"
       />

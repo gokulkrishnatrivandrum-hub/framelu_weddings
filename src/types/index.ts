@@ -62,6 +62,7 @@ export interface DeliverablesConfig {
   photoMugsCount: number;
   wallCalendarsCount: number;
   tableTopCalendarsCount: number;
+  gradedPhotosCount: number;
   customPrintCounts?: Record<string, number>;
 }
 
@@ -74,6 +75,19 @@ export interface CustomerUser {
   registeredAt?: string;
   verified?: boolean;
   verificationMethod?: 'phone' | 'email';
+}
+
+export interface SelectedOtherService {
+  packageId: string;
+  category: string;
+  title: string;
+  titleMl: string;
+  price: number;
+  customSelections?: string[];
+  notes?: string;
+  guestCount?: number;
+  cardCount?: number;
+  unitPrice?: number;
 }
 
 export interface CustomerLead {
@@ -95,6 +109,44 @@ export interface CustomerLead {
   groomEvents?: Record<EventId, EventCrewConfig>;
   brideEvents?: Record<EventId, EventCrewConfig>;
   deliverables?: DeliverablesConfig;
+  selectedServices?: SelectedOtherService[];
+  couponCode?: string;
+  discountPercentage?: number;
+  discountAmount?: number;
+  grandTotalAfterDiscount?: number;
+  studioBranding?: StudioUser;
+  source?: 'studio' | 'customer';
+  createdBy?: 'studio' | 'customer';
+  leadType?: 'wedding' | 'standalone_photoshoot';
+  photoshootType?: string;
+  photoshootDetails?: {
+    type?: string;
+    titleEn?: string;
+    titleMl?: string;
+    title?: string;
+    imageUrl?: string;
+    badge?: string;
+    tag?: string;
+    sessionHours?: number;
+    hours?: number;
+    locationType?: string;
+    venue?: string;
+    venueLocation?: string;
+    date?: string;
+    crew?: any;
+    deliverables?: any;
+    featuresMl?: string[];
+    featuresEn?: string[];
+    features?: string[];
+    priceBreakdown?: Array<{
+      title: string;
+      titleMl?: string;
+      amount: number;
+    }>;
+    basePrice?: number;
+    totalPrice?: number;
+    [key: string]: any;
+  };
 }
 
 export interface PriceRates {
@@ -150,8 +202,15 @@ export interface PriceRates {
   photoMugRate: number;
   wallCalendarRate: number;
   tableTopCalendarRate: number;
+  photoGradingRate: number;
   glassCalendarRate?: number;
   monthlyCalendarRate?: number;
+}
+
+export interface SocialMediaHandle {
+  platform: 'instagram' | 'facebook' | 'youtube' | 'whatsapp' | 'pinterest' | 'website' | string;
+  url: string;
+  label?: string;
 }
 
 export interface StudioContactConfig {
@@ -159,6 +218,32 @@ export interface StudioContactConfig {
   whatsapp: string;
   destination: string;
   email: string;
+  instagram?: string;
+  facebook?: string;
+  youtube?: string;
+  socialLinks?: SocialMediaHandle[];
+}
+
+export interface GalleryProject {
+  id: string;
+  title: string;
+  titleMl: string;
+  category: string; // 'photography' | 'food_catering' | 'event_planning' | 'makeup' | 'luxury_cars' | 'invitations' | string
+  clientName: string; // e.g. "Rahul & Anjali"
+  venueLocation: string; // e.g. "Lulu Bolgatty Grand Ballroom, Kochi"
+  eventDate?: string;
+  coverImage: string;
+  galleryImages?: string[];
+  description?: string;
+  descriptionMl?: string;
+  clientReview?: {
+    reviewerName: string;
+    rating: number; // 1 to 5 stars
+    comment: string;
+    commentMl?: string;
+    date?: string;
+  };
+  featured?: boolean;
 }
 
 export interface PromoOffer {
@@ -184,16 +269,143 @@ export interface HighlightBoard {
   features: string[];
   popular?: boolean;
   bannerUrl?: string;
+  presetConfig?: {
+    side?: SideSelection;
+    events?: {
+      weddingDayCrew?: { tradPhoto?: number; tradVideo?: number; candidPhoto?: number; candidVideo?: number; drone?: boolean };
+      receptionCrew?: { tradPhoto?: number; tradVideo?: number; candidPhoto?: number; candidVideo?: number; drone?: boolean };
+    };
+    deliverables?: {
+      videoQuality?: 'hd' | '4k';
+      mainAlbums?: number;
+      mainSheets?: number;
+      albumCover?: string;
+      highlightVideo?: boolean;
+      teaserVideo?: boolean;
+      reels?: number;
+    };
+  };
+}
+
+export interface ServiceCategory {
+  id: string;
+  name: string;
+  nameMl: string;
+  description?: string;
+  descriptionMl?: string;
+  imageUrl: string;
+  badge?: string;
 }
 
 export interface OtherServicePackage {
   id: string;
-  category: 'event_planning' | 'makeup' | 'dress' | 'invitations' | 'luxury_cars' | 'honeymoon';
+  category: 'food_catering' | 'event_planning' | 'makeup' | 'dress' | 'invitations' | 'luxury_cars' | 'honeymoon' | string;
   title: string;
   titleMl: string;
   description: string;
+  descriptionMl?: string;
   price: number;
   features: string[];
   imageUrl: string;
   badge?: string;
+  pricingType?: 'fixed' | 'per_guest' | 'per_card';
+  baseGuestCount?: number;
+  baseCardCount?: number;
+  pricePerUnit?: number;
+  customOptions?: Array<{
+    id: string;
+    label: string;
+    labelMl?: string;
+    price?: number;
+  }>;
+}
+
+export type PhotoshootType =
+  | 'wedding'
+  | 'birthday'
+  | 'anniversary'
+  | 'baby_shower'
+  | 'baby_photoshoot'
+  | 'newborn_baby'
+  | 'model_photoshoot'
+  | string;
+
+export interface PhotoshootConfig {
+  id?: string;
+  type: PhotoshootType;
+  titleEn: string;
+  titleMl: string;
+  title?: string;
+  tagMl?: string;
+  tagEn?: string;
+  tag?: string;
+  descriptionEn?: string;
+  descriptionMl?: string;
+  description?: string;
+  basePrice: number;
+  price?: number;
+  imageUrl?: string;
+  badge?: string;
+  sessionHours?: number;
+  hours?: number;
+  locationType?: 'studio' | 'home' | 'outdoor' | 'event_hall' | string;
+  crew?: {
+    photographers?: number;
+    videographers?: number;
+    reelCreator?: boolean;
+    reelsCount?: number;
+    drone?: boolean;
+  };
+  deliverables?: {
+    editedPhotosCount?: number;
+    gradedPhotosCount?: number;
+    teaserVideo?: boolean;
+    fullLengthVideo?: boolean;
+    videoQuality?: '4k' | 'hd';
+    albumIncluded?: boolean;
+    albumSheets?: number;
+    framesCount?: number;
+    frameSize?: string;
+    penDrive?: boolean;
+    mainAlbumsCount?: number;
+    mainAlbumSheets?: number;
+    albumPaperType?: string;
+    frames_8x12?: number;
+    frames_18x12?: number;
+    frames_15x20?: number;
+    penDriveCount?: number;
+    penDriveBoxCount?: number;
+    miniAlbumsCount?: number;
+    reelsCount?: number;
+  };
+  featuresMl?: string[];
+  featuresEn?: string[];
+  features?: string[];
+  active?: boolean;
+}
+
+export interface CouponCode {
+  id: string;
+  code: string;
+  discountPercentage: number;
+  description: string;
+  descriptionMl?: string;
+  minAmount?: number;
+  active: boolean;
+  validTill?: string;
+  createdAt?: string;
+  isPublic?: boolean;
+}
+
+export interface StudioUser {
+  id?: string;
+  studioName: string;
+  ownerName?: string;
+  phone: string;
+  email: string;
+  address: string;
+  place: string;
+  registeredAt?: string;
+  verified?: boolean;
+  verificationMethod?: 'phone' | 'email';
 }
