@@ -1,0 +1,216 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { CustomerLead } from '@/types';
+import { X, User, Phone, Mail, MapPin, Calendar, FileText, CheckCircle2 } from 'lucide-react';
+
+interface LeadCaptureModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (lead: CustomerLead) => void;
+  initialLead?: CustomerLead;
+  totalPrice: number;
+  language?: 'en' | 'ml';
+}
+
+export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
+  isOpen,
+  onClose,
+  onSubmit,
+  initialLead,
+  totalPrice,
+  language = 'en',
+}) => {
+  const isMl = language === 'ml';
+  const [formData, setFormData] = useState<CustomerLead>({
+    name: initialLead?.name || '',
+    phone: initialLead?.phone || '',
+    email: initialLead?.email || '',
+    address: initialLead?.address || 'കായംകുളം, ആലപ്പുഴ',
+    place: initialLead?.place || 'കായംകുളം',
+    weddingDate: initialLead?.weddingDate || '2026-12-20',
+    venueLocation: initialLead?.venueLocation || 'Royal Auditorium, Kayamkulam',
+    notes: initialLead?.notes || '',
+  });
+
+  // Automatically pre-fill logged in user's profile details when modal opens
+  useEffect(() => {
+    if (isOpen && initialLead) {
+      setFormData({
+        name: initialLead.name || '',
+        phone: initialLead.phone || '',
+        email: initialLead.email || '',
+        address: initialLead.address || 'കായംകുളം, ആലപ്പുഴ',
+        place: initialLead.place || 'കായംകുളം',
+        weddingDate: initialLead.weddingDate || '2026-12-20',
+        venueLocation: initialLead.venueLocation || 'Royal Auditorium, Kayamkulam',
+        notes: initialLead.notes || '',
+      });
+    }
+  }, [isOpen, initialLead]);
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.name.trim()) newErrors.name = 'പേര് നൽകുക (Name required)';
+    if (!formData.phone.trim() || formData.phone.length < 10) {
+      newErrors.phone = 'ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക (Valid phone required)';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    onSubmit({
+      ...formData,
+      totalPrice,
+      createdAt: new Date().toISOString(),
+      status: 'New',
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative border border-stone-200 animate-fade-in max-h-[90vh] overflow-y-auto">
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-5 text-stone-400 hover:text-stone-700 transition"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        <div className="text-center mb-6">
+          <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xs">
+            <FileText className="w-6 h-6" />
+          </div>
+          <h3 className="text-2xl font-black text-stone-900">
+            PDF കൊട്ടേഷൻ തയ്യാറാക്കാം
+          </h3>
+          <p className="text-stone-600 text-xs sm:text-sm mt-1">
+            നിങ്ങളുടെ കൊട്ടേഷനിൽ പ്രിന്റ് ചെയ്യാനായി പേരും കോൺടാക്റ്റ് വിവരങ്ങളും നൽകുക
+          </p>
+          <div className="mt-3 inline-block bg-amber-50 border border-amber-200 rounded-full px-4 py-1 text-xs font-bold text-amber-800">
+            എസ്റ്റിമേറ്റ് തുക: ₹{totalPrice.toLocaleString('en-IN')}
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-left">
+          {/* Name */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1">
+              കസ്റ്റമറുടെ പേര് (Your Name) *
+            </label>
+            <div className="relative">
+              <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                placeholder="ഉദാ: രാഹുൽ / അഞ്ജലി"
+                value={formData.name}
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value });
+                  if (errors.name) setErrors({ ...errors, name: '' });
+                }}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm text-stone-900 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition ${
+                  errors.name ? 'border-rose-500 ring-rose-200' : 'border-stone-200'
+                }`}
+              />
+            </div>
+            {errors.name && <p className="text-[11px] text-rose-500 mt-1">{errors.name}</p>}
+          </div>
+
+          {/* Phone */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1">
+              മൊബൈൽ നമ്പർ (Mobile Number) *
+            </label>
+            <div className="relative">
+              <Phone className="w-4 h-4 text-stone-400 absolute left-3.5 top-3.5" />
+              <input
+                type="tel"
+                placeholder="10 അക്ക മൊബൈൽ നമ്പർ (ഉദാ: 9876543210)"
+                value={formData.phone}
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  if (errors.phone) setErrors({ ...errors, phone: '' });
+                }}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm text-stone-900 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition ${
+                  errors.phone ? 'border-rose-500 ring-rose-200' : 'border-stone-200'
+                }`}
+              />
+            </div>
+            {errors.phone && <p className="text-[11px] text-rose-500 mt-1">{errors.phone}</p>}
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1">
+              ഇമെയിൽ ഐഡി (Email Address)
+            </label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-3.5" />
+              <input
+                type="email"
+                placeholder="youremail@gmail.com (ഓപ്ഷണൽ)"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 text-sm text-stone-900 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+              />
+            </div>
+          </div>
+
+          {/* Wedding Date */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1">
+              വിവാഹ തീയതി (Wedding / Event Date)
+            </label>
+            <div className="relative">
+              <Calendar className="w-4 h-4 text-stone-400 absolute left-3.5 top-3.5" />
+              <input
+                type="date"
+                value={formData.weddingDate}
+                onChange={(e) => setFormData({ ...formData, weddingDate: e.target.value })}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 text-sm text-stone-900 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+              />
+            </div>
+          </div>
+
+          {/* Address / Location */}
+          <div>
+            <label className="block text-xs font-bold text-stone-700 mb-1">
+              സ്ഥലം / ഓഡിറ്റോറിയം (Address / Venue / Location)
+            </label>
+            <div className="relative">
+              <MapPin className="w-4 h-4 text-stone-400 absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                placeholder="ഉദാ: കായംകുളം ഓഡിറ്റോറിയം, ആലപ്പുഴ"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 text-sm text-stone-900 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold py-3.5 px-4 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-sm"
+            >
+              <CheckCircle2 className="w-5 h-5" />
+              <span>കൊട്ടേഷൻ കാണുക & PDF ഡൗൺലോഡ് ചെയ്യുക</span>
+            </button>
+            <p className="text-[11px] text-stone-400 text-center mt-2">
+              നിങ്ങളുടെ വിവരങ്ങൾ സ്റ്റുഡിയോയുടെ അഡ്മിൻ പാനലിൽ സുരക്ഷിതമായി സൂക്ഷിക്കപ്പെടുന്നതാണ്
+            </p>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};

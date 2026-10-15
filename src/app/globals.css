@@ -1,0 +1,217 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    @apply bg-stone-50 text-stone-900 antialiased;
+  }
+}
+
+.pdf-page, #printable-quotation-doc {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f5f5f4;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 8mm 8mm 8mm;
+  }
+
+  /* Force exact color, background, and gradient rendering across all browsers */
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    box-sizing: border-box !important;
+    text-rendering: optimizeLegibility !important;
+  }
+
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #1c1917 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Keep application root container visible and unrolled for printing */
+  [class*="min-h-screen"] {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    background: #ffffff !important;
+    color: #1c1917 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* When printing quotation proposal: isolate modal and hide all background UI */
+  body.is-printing-quotation nav,
+  body:has(#quotation-modal-backdrop) nav,
+  body.is-printing-quotation .print\:hidden,
+  body:has(#quotation-modal-backdrop) .print\:hidden,
+  body.is-printing-quotation [class*="min-h-screen"] > *:not(#quotation-modal-backdrop),
+  body:has(#quotation-modal-backdrop) [class*="min-h-screen"] > *:not(#quotation-modal-backdrop) {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+  }
+
+  /* Modal container seamlessly unrolls for clean page flow */
+  #quotation-modal-backdrop {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+    inset: auto !important;
+    transform: none !important;
+  }
+
+  #quotation-modal-card {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+
+  #quotation-modal-scroll {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    transform: none !important;
+  }
+
+  #printable-quotation {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    display: block !important;
+    transform: none !important;
+  }
+
+  /* Main Quotation Document: Perfectly aligns to A4 without clipping */
+  #printable-quotation-doc,
+  .pdf-page {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+    transform: none !important;
+  }
+
+  /* Prevent split cuts inside logical units */
+  .pdf-page > div,
+  .pdf-section,
+  .break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Grid and Flex containers stay solid and proportional */
+  .grid, .flex {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Ensure icons and images scale without pushing outside boundaries */
+  img, svg {
+    max-width: 100% !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Typography consistency */
+  h1, h2, h3, h4, h5, p, span {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    orphans: 3;
+    widows: 3;
+  }
+}
