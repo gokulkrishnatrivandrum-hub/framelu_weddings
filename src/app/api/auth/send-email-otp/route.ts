@@ -28,12 +28,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      sent: emailResult.sent,
       message: emailResult.sent
         ? 'OTP code sent successfully to your email.'
-        : 'OTP generated. Check console or use dev OTP code.',
+        : emailResult.error || 'OTP generated. Please use the verification code.',
       token,
       provider: emailResult.provider,
       devOtp: emailResult.devOtp,
+      warning: emailResult.error,
     });
   } catch (error: any) {
     console.error('Error in send-email-otp route:', error);

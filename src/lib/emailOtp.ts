@@ -42,6 +42,13 @@ export function verifyOtpToken(
   return { valid: true };
 }
 
+export interface SendEmailResult {
+  sent: boolean;
+  provider: string;
+  error?: string;
+  devOtp?: string;
+}
+
 /**
  * Send OTP Email via Resend, Brevo, or console log in development mode.
  */
@@ -53,7 +60,7 @@ export async function sendOtpEmail({
   to: string;
   name: string;
   otp: string;
-}): Promise<{ sent: boolean; provider: string; devOtp?: string }> {
+}): Promise<SendEmailResult> {
   const cleanEmail = to.toLowerCase().trim();
   const userName = name?.trim() || 'Customer';
 
@@ -110,14 +117,16 @@ export async function sendOtpEmail({
     </html>
   `;
 
-  // 1. Try Resend API (if configured in .env.local)
-  if (process.env.RESEND_API_KEY) {
+  // 1. Try Resend API (configured via ENV)
+  const resendApiKey = process.env.RESEND_API_KEY;
+
+  if (resendApiKey) {
     try {
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          Authorization: `Bearer ${resendApiKey}`,
         },
         body: JSON.stringify({
           from: process.env.EMAIL_FROM || 'Framlu Weddings <onboarding@resend.dev>',
@@ -128,10 +137,29 @@ export async function sendOtpEmail({
       });
 
       if (res.ok) {
+        console.log(`✅ [Resend] Successfully sent OTP ${otp} to ${cleanEmail}`);
         return { sent: true, provider: 'resend' };
       }
+
       const err = await res.json().catch(() => ({}));
       console.error('Resend error:', err);
+
+      if (err?.message?.includes('only send testing emails to your own email address')) {
+        return {
+          sent: false,
+          provider: 'resend_sandbox',
+          error:
+            'Resend സൗജന്യ ടെസ്റ്റ് അക്കൗണ്ട് ആയതിനാൽ നിങ്ങളുടെ രജിസ്റ്റർ ചെയ്ത ഇമെയിലിലേക്ക് (gokulkrishnatrivandrum@gmail.com) മാത്രമേ ഇപ്പോൾ മെയിൽ അയക്കാൻ സാധിക്കൂ. മറ്റ് ഇമെയിലുകളിലേക്ക് അയക്കാൻ resend.com-ൽ സ്വന്തം ഡൊമൈൻ വെരിഫൈ ചെയ്യുക.',
+          devOtp: otp,
+        };
+      }
+
+      return {
+        sent: false,
+        provider: 'resend',
+        error: err?.message || 'Failed to dispatch email via Resend',
+        devOtp: otp,
+      };
     } catch (e: any) {
       console.error('Resend fetch failed:', e);
     }
@@ -176,6 +204,6 @@ export async function sendOtpEmail({
   return {
     sent: false,
     provider: 'console',
-    devOtp: process.env.NODE_ENV !== 'production' ? otp : undefined,
+    devOtp: otp,
   };
 }

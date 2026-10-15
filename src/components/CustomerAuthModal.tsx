@@ -71,6 +71,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
   // Email OTP specific states
   const [emailOtpToken, setEmailOtpToken] = useState<string>('');
   const [devOtpCode, setDevOtpCode] = useState<string>('');
+  const [emailWarning, setEmailWarning] = useState<string>('');
 
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
 
@@ -233,6 +234,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
         setEmailOtpToken(data.token || '');
         setDevOtpCode(data.devOtp || '');
+        setEmailWarning(data.warning || '');
         setOtpInput('');
         setResendTimer(60);
         setStep('verify_email');
@@ -294,6 +296,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
         setEmailOtpToken(data.token || '');
         setDevOtpCode(data.devOtp || '');
+        setEmailWarning(data.warning || '');
         setResendTimer(60);
         setOtpInput('');
       }
@@ -774,6 +777,13 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
               <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 text-left">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                 <span>{authError}</span>
+              </div>
+            )}
+
+            {emailWarning && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-xs text-amber-900 text-left">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                <span>{emailWarning}</span>
               </div>
             )}
 
