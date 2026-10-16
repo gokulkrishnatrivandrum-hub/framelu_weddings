@@ -79,7 +79,7 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
   // Add-on / Other Service Editing State
   const [editingAddon, setEditingAddon] = useState<SelectedOtherService | null>(null);
   const [addonEditDate, setAddonEditDate] = useState<string>('');
-  const [addonEditPrice, setAddonEditPrice] = useState<number>(0);
+  const [addonEditPrice, setAddonEditPrice] = useState<number | string>(0);
 
   // Photoshoot specific state
   const [addonEditHours, setAddonEditHours] = useState<number>(3);

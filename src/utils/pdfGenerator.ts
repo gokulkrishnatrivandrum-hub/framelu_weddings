@@ -329,7 +329,7 @@ export async function generateQuotationPdfBlob(
   if (d?.highlightVideo) deliverableItems.push('Cinematic Wedding Highlight Film (3-5 mins)');
   if (d?.fullLengthVideo) deliverableItems.push('Full Length Traditional Wedding Film');
   if (d?.reelsCount) deliverableItems.push(`${d.reelsCount} Fast Delivery Instagram Reels`);
-  if (d?.frames_12x18 || d?.frames_18x12) deliverableItems.push('Master Large Wall Portrait Frame');
+  if (d?.frames_18x12 || d?.frames_15x20) deliverableItems.push('Master Large Wall Portrait Frame');
 
   deliverableItems.forEach((item) => {
     doc.setFont('helvetica', 'normal');
