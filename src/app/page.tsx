@@ -1331,16 +1331,23 @@ export default function Home() {
     setIsRoleAuthModalOpen(true);
   };
 
-  const handleDeleteLead = async (leadId: string) => {
+  const handleDeleteLead = async (leadIdOrQuote: string | CustomerLead) => {
+    const targetId = typeof leadIdOrQuote === 'string' ? leadIdOrQuote : leadIdOrQuote.id;
     setLeads((prev) => {
-      const updated = prev.filter((l) => l.id !== leadId);
+      const updated = prev.filter((l) => {
+        if (targetId && l.id) return l.id !== targetId;
+        if (typeof leadIdOrQuote !== 'string') return l !== leadIdOrQuote;
+        return l.id !== targetId;
+      });
       if (typeof window !== 'undefined') {
         localStorage.setItem('framlu_wedding_leads', JSON.stringify(updated));
         localStorage.setItem('lumina_wedding_leads', JSON.stringify(updated));
       }
       return updated;
     });
-    await deleteLeadFromCloud(leadId);
+    if (targetId) {
+      await deleteLeadFromCloud(targetId);
+    }
   };
 
   const handleStartNewQuote = (serviceType?: 'wedding' | 'photoshoot' | 'other_services', prefilledDate?: string) => {

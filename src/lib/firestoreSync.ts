@@ -412,12 +412,10 @@ export const subscribeCustomerLeads = (
           const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return tB - tA;
         });
-        if (leads.length > 0) {
-          onData(leads);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('framlu_wedding_leads', JSON.stringify(leads));
-            localStorage.setItem('lumina_wedding_leads', JSON.stringify(leads));
-          }
+        onData(leads);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_wedding_leads', JSON.stringify(leads));
+          localStorage.setItem('lumina_wedding_leads', JSON.stringify(leads));
         }
       },
       (err) => {

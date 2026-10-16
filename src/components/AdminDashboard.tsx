@@ -669,36 +669,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     showNotification(isMl ? `സ്റ്റാറ്റസ് ${newStatus} ആക്കി മാറ്റി` : `Status updated to ${newStatus}`);
   };
 
-  const deleteLead = async (leadIndex: number) => {
-    const targetLead = leads[leadIndex];
-    if (confirm(isMl ? 'ഈ ലീഡ് ഒഴിവാക്കണോ?' : 'Delete this customer lead?')) {
-      if (targetLead?.id) {
-        await deleteLeadFromCloud(targetLead.id);
-      }
+  const deleteLead = async (targetLead: CustomerLead | number) => {
+    let leadToDelete: CustomerLead | undefined;
+    if (typeof targetLead === 'number') {
+      leadToDelete = leads[targetLead];
+    } else {
+      leadToDelete = targetLead;
+    }
+    if (!leadToDelete) return;
+
+    const leadName = leadToDelete.name || leadToDelete.phone || 'Customer';
+    if (confirm(isMl ? `"${leadName}" എന്ന കസ്റ്റമറുടെ കൊട്ടേഷൻ സ്ഥിരമായി ഒഴിവാക്കണോ?` : `Permanently delete quotation for "${leadName}"?`)) {
+      const targetId = leadToDelete.id;
+
+      // Optimistically update local state & localStorage immediately
       setLeads((prev) => {
-        const updated = prev.filter((_, idx) => idx !== leadIndex);
+        const updated = prev.filter((l) => {
+          if (targetId && l.id) return l.id !== targetId;
+          return l !== leadToDelete;
+        });
         if (typeof window !== 'undefined') {
           localStorage.setItem('lumina_wedding_leads', JSON.stringify(updated));
           localStorage.setItem('framlu_wedding_leads', JSON.stringify(updated));
         }
         return updated;
       });
-      showNotification(isMl ? 'ലീഡ് നീക്കം ചെയ്തു' : 'Lead deleted');
+
+      if (targetId) {
+        setSelectedLeadIds((prev) => prev.filter((id) => id !== targetId));
+      }
+      if (selectedLead && (selectedLead.id === targetId || selectedLead === leadToDelete)) {
+        setSelectedLead(null);
+      }
+
+      if (targetId) {
+        await deleteLeadFromCloud(targetId);
+      }
+      showNotification(isMl ? 'കൊട്ടേഷൻ നീക്കം ചെയ്തു' : 'Quotation deleted successfully');
     }
   };
 
   const handleBulkDeleteLeads = async () => {
     if (selectedLeadIds.length === 0) return;
+    const count = selectedLeadIds.length;
     if (
       confirm(
         isMl
-          ? `തിരഞ്ഞെടുത്ത ${selectedLeadIds.length} കസ്റ്റമർ ലീഡുകൾ സ്ഥിരമായി ഒഴിവാക്കണോ?`
-          : `Permanently delete ${selectedLeadIds.length} selected leads?`
+          ? `തിരഞ്ഞെടുത്ത ${count} കൊട്ടേഷനുകൾ സ്ഥിരമായി ഒഴിവാക്കണോ?`
+          : `Permanently delete ${count} selected quotations?`
       )
     ) {
-      await bulkDeleteLeadsFromCloud(selectedLeadIds);
+      const idsToDelete = [...selectedLeadIds];
       setLeads((prev) => {
-        const updated = prev.filter((l) => !l.id || !selectedLeadIds.includes(l.id));
+        const updated = prev.filter((l) => !l.id || !idsToDelete.includes(l.id));
         if (typeof window !== 'undefined') {
           localStorage.setItem('lumina_wedding_leads', JSON.stringify(updated));
           localStorage.setItem('framlu_wedding_leads', JSON.stringify(updated));
@@ -706,10 +729,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return updated;
       });
       setSelectedLeadIds([]);
+      if (selectedLead && selectedLead.id && idsToDelete.includes(selectedLead.id)) {
+        setSelectedLead(null);
+      }
+      await bulkDeleteLeadsFromCloud(idsToDelete);
       showNotification(
         isMl
-          ? `${selectedLeadIds.length} ലീഡുകൾ വിജയകരമായി നീക്കം ചെയ്തു!`
-          : `${selectedLeadIds.length} leads deleted successfully!`
+          ? `${count} കൊട്ടേഷനുകൾ വിജയകരമായി നീക്കം ചെയ്തു!`
+          : `${count} quotations deleted successfully!`
+      );
+    }
+  };
+
+  const handleDeleteAllLeads = async () => {
+    if (displayedLeads.length === 0) return;
+    const count = displayedLeads.length;
+    if (
+      confirm(
+        isMl
+          ? `ശ്രദ്ധിക്കുക: ഇവിടെ കാണുന്ന ${count} കൊട്ടേഷനുകളും ഒന്നിച്ച് പൂർണ്ണമായി ഒഴിവാക്കണോ?`
+          : `Warning: Permanently delete ALL ${count} currently displayed quotations?`
+      )
+    ) {
+      const idsToDelete = displayedLeads.map((l) => l.id).filter(Boolean) as string[];
+      setLeads((prev) => {
+        const updated = prev.filter((l) => !displayedLeads.includes(l) && (!l.id || !idsToDelete.includes(l.id)));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('lumina_wedding_leads', JSON.stringify(updated));
+          localStorage.setItem('framlu_wedding_leads', JSON.stringify(updated));
+        }
+        return updated;
+      });
+      setSelectedLeadIds([]);
+      setSelectedLead(null);
+      if (idsToDelete.length > 0) {
+        await bulkDeleteLeadsFromCloud(idsToDelete);
+      }
+      showNotification(
+        isMl
+          ? `എല്ലാ (${count}) കൊട്ടേഷനുകളും നീക്കം ചെയ്തു!`
+          : `All (${count}) quotations deleted successfully!`
       );
     }
   };
@@ -1456,10 +1515,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const toggleSelectAll = () => {
-    if (selectedLeadIds.length === displayedLeads.length) {
+    if (displayedLeads.length === 0) return;
+    const allDisplayedKeys = displayedLeads.map((l, i) => l.id || `lead_key_${i}`);
+    const isAllSelected =
+      allDisplayedKeys.length > 0 && allDisplayedKeys.every((id) => selectedLeadIds.includes(id));
+    if (isAllSelected) {
       setSelectedLeadIds([]);
     } else {
-      setSelectedLeadIds(displayedLeads.map((l) => l.id || '').filter(Boolean));
+      setSelectedLeadIds(allDisplayedKeys);
     }
   };
 
@@ -2756,19 +2819,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
-              {/* Bulk Delete Action Button */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Select All / Deselect All Button */}
+              <button
+                type="button"
+                onClick={toggleSelectAll}
+                disabled={displayedLeads.length === 0}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-2xs border cursor-pointer disabled:opacity-40 ${
+                  displayedLeads.length > 0 &&
+                  displayedLeads.every((l, i) => selectedLeadIds.includes(l.id || `lead_key_${i}`))
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-white text-stone-700 hover:bg-stone-50 border-stone-250'
+                }`}
+                title={isMl ? 'എല്ലാ കൊട്ടേഷനുകളും തിരഞ്ഞെടുക്കുക' : 'Select all quotations'}
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-amber-600" />
+                <span>
+                  {displayedLeads.length > 0 &&
+                  displayedLeads.every((l, i) => selectedLeadIds.includes(l.id || `lead_key_${i}`))
+                    ? (isMl ? 'തിരഞ്ഞെടുക്കൽ മാറ്റുക' : 'Deselect All')
+                    : (isMl ? `എല്ലാം സെലക്ട് ചെയ്യുക (${displayedLeads.length})` : `Select All (${displayedLeads.length})`)}
+                </span>
+              </button>
+
+              {/* Bulk Delete Selected Action Button */}
               {selectedLeadIds.length > 0 && (
                 <button
                   type="button"
                   onClick={handleBulkDeleteLeads}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition animate-pulse"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition animate-pulse cursor-pointer"
+                  title={isMl ? 'തിരഞ്ഞെടുത്ത കൊട്ടേഷനുകൾ ഒഴിവാക്കുക' : 'Delete selected quotations'}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                   <span>
                     {isMl
-                      ? `തിരഞ്ഞെടുത്തവ ഒഴിവാക്കുക (${selectedLeadIds.length})`
+                      ? `തിരഞ്ഞെടുത്തവ ഡിലീറ്റ് ചെയ്യുക (${selectedLeadIds.length})`
                       : `Delete Selected (${selectedLeadIds.length})`}
+                  </span>
+                </button>
+              )}
+
+              {/* Delete All Quotes in Filter Button */}
+              {displayedLeads.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDeleteAllLeads}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-300 text-rose-700 hover:text-rose-900 font-bold text-xs transition cursor-pointer"
+                  title={isMl ? 'ലിസ്റ്റിലുള്ള എല്ലാ കൊട്ടേഷനുകളും ഒന്നിച്ച് ഡിലീറ്റ് ചെയ്യുക' : 'Permanently delete all quotes in current view'}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>
+                    {isMl ? `എല്ലാം ഡിലീറ്റ് ചെയ്യുക (${displayedLeads.length})` : `Delete All (${displayedLeads.length})`}
                   </span>
                 </button>
               )}
@@ -2778,14 +2879,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 type="button"
                 onClick={handleDownloadCustomerDataPdf}
                 disabled={displayedLeads.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs shadow-sm transition"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 disabled:opacity-40 text-white font-bold text-xs shadow-xs transition cursor-pointer"
                 title={isMl ? 'കസ്റ്റമർ ഡേറ്റ PDF ആയി ഡൗൺലോഡ് ചെയ്യുക' : 'Download Customer Report as PDF'}
               >
-                <Download className="w-4 h-4" />
-                <span>{isMl ? 'ഡേറ്റ PDF ഡൗൺലോഡ്' : 'Export Leads PDF'}</span>
+                <Download className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isMl ? 'PDF എക്സ്പോർട്ട്' : 'Export PDF'}</span>
               </button>
 
-              <span className="bg-amber-100 text-amber-900 font-bold px-3 py-1.5 rounded-xl text-xs">
+              <span className="bg-amber-100 text-amber-950 font-black px-3 py-2 rounded-xl text-xs border border-amber-200">
                 {isMl ? `ആകെ: ${leads.length}` : `Total: ${leads.length}`}
               </span>
             </div>
@@ -2956,7 +3057,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         type="checkbox"
                         checked={
                           displayedLeads.length > 0 &&
-                          selectedLeadIds.length === displayedLeads.length
+                          displayedLeads.every((l, i) => selectedLeadIds.includes(l.id || `lead_key_${i}`))
                         }
                         onChange={toggleSelectAll}
                         className="w-4 h-4 rounded text-amber-600 accent-amber-600 cursor-pointer"
@@ -2975,12 +3076,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </thead>
                 <tbody className="divide-y divide-stone-100">
                   {displayedLeads.map((lead, idx) => {
-                    const isChecked = lead.id ? selectedLeadIds.includes(lead.id) : false;
+                    const leadKey = lead.id || `lead_key_${idx}`;
+                    const isChecked = selectedLeadIds.includes(leadKey);
                     const statusCfg = getLeadStatusConfig(lead.status || 'New', isMl);
 
                     return (
                       <tr
-                        key={lead.id || idx}
+                        key={leadKey}
                         className={`transition ${
                           isChecked ? 'bg-amber-50/70' : 'hover:bg-stone-50'
                         } ${statusCfg.borderLeft}`}
@@ -2990,7 +3092,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => lead.id && toggleSelectLead(lead.id)}
+                            onChange={() => toggleSelectLead(leadKey)}
                             className="w-4 h-4 rounded text-amber-600 accent-amber-600 cursor-pointer"
                           />
                         </td>
@@ -3115,8 +3217,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => deleteLead(idx)}
-                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition"
+                            onClick={() => deleteLead(lead)}
+                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition cursor-pointer"
                             title="Delete Lead"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -5438,13 +5540,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedLead(null)}
-                className="p-2 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => deleteLead(selectedLead)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 hover:text-rose-800 text-xs font-bold transition cursor-pointer"
+                  title={isMl ? 'ഈ കൊട്ടേഷൻ ഡിലീറ്റ് ചെയ്യുക' : 'Delete this quotation'}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isMl ? 'ഡിലീറ്റ്' : 'Delete'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedLead(null)}
+                  className="p-2 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Studio Partner Box if from Studio Login */}

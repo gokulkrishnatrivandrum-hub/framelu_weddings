@@ -56,7 +56,7 @@ interface QuotesDashboardProps {
   onViewPdf: (lead: CustomerLead) => void;
   onSendWhatsApp: (lead: CustomerLead) => void;
   onEditLead: (lead: CustomerLead) => void;
-  onDeleteLead?: (leadId: string) => void;
+  onDeleteLead?: (leadIdOrQuote: string | CustomerLead) => void;
   onUpdateLeadStatus?: (leadId: string, status: CustomerLead['status']) => void;
   onUpdateLeadDateAndStatus?: (leadId: string, newDate: string, newStatus?: CustomerLead['status'], eventKey?: string) => Promise<void> | void;
   onOpenLogin?: () => void;
@@ -1461,7 +1461,7 @@ export const QuotesDashboard: React.FC<QuotesDashboardProps> = ({
                           type="button"
                           onClick={() => {
                             if (confirm(isMl ? 'ഈ കൊട്ടേഷൻ നീക്കം ചെയ്യണോ?' : 'Delete this quotation?')) {
-                              onDeleteLead(quote.id || '');
+                              onDeleteLead(quote.id ? quote.id : quote);
                             }
                           }}
                           className="p-1.5 rounded-xl bg-stone-100 hover:bg-rose-100 text-stone-400 hover:text-rose-600 transition cursor-pointer"
