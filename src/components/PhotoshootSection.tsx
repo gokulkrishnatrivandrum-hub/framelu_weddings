@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   PhotoshootType,
   PhotoshootConfig,
@@ -38,6 +38,7 @@ import {
   Minus,
   Check,
   Clapperboard,
+  RotateCcw,
 } from 'lucide-react';
 
 interface PhotoshootSectionProps {
@@ -47,6 +48,7 @@ interface PhotoshootSectionProps {
   onAddAsAddon?: (service: SelectedOtherService) => void;
   onRemoveAddon?: (packageId: string) => void;
   isAddonSelected?: (packageId: string) => boolean;
+  onBackToWedding?: () => void;
   onInstantStandaloneQuote?: (shootSummary: {
     title: string;
     price: number;
@@ -58,6 +60,7 @@ interface PhotoshootSectionProps {
   studioContact?: StudioContactConfig;
   photoshoots?: PhotoshootConfig[];
   rates?: PriceRates;
+  initialDate?: string;
 }
 
 export const PhotoshootSection: React.FC<PhotoshootSectionProps> = ({
@@ -67,10 +70,12 @@ export const PhotoshootSection: React.FC<PhotoshootSectionProps> = ({
   onAddAsAddon,
   onRemoveAddon,
   isAddonSelected,
+  onBackToWedding,
   onInstantStandaloneQuote,
   studioContact = { phone: '+91 6238747722', whatsapp: '916238747722' } as StudioContactConfig,
   photoshoots,
   rates,
+  initialDate,
 }) => {
   const isMl = language === 'ml';
 
@@ -94,7 +99,13 @@ export const PhotoshootSection: React.FC<PhotoshootSectionProps> = ({
   const [customSessionHours, setCustomSessionHours] = useState<number>(activeConfig.sessionHours || 4);
   const [customLocationType, setCustomLocationType] = useState<string>(activeConfig.locationType || 'studio');
   const [customVenue, setCustomVenue] = useState<string>('');
-  const [customDate, setCustomDate] = useState<string>('');
+  const [customDate, setCustomDate] = useState<string>(initialDate || '');
+
+  useEffect(() => {
+    if (initialDate) {
+      setCustomDate(initialDate);
+    }
+  }, [initialDate]);
 
   // Crew state
   const [customPhotographers, setCustomPhotographers] = useState<number>(activeConfig.crew?.photographers || 1);
@@ -137,10 +148,20 @@ export const PhotoshootSection: React.FC<PhotoshootSectionProps> = ({
 
   // When changing active photoshoot, sync local state to that photoshoot's defaults
   const handleSelectShootType = (type: PhotoshootType) => {
+    if (type === 'wedding') {
+      if (onBackToWedding) {
+        onBackToWedding();
+      }
+      onSelectPhotoshoot('wedding');
+      if (typeof document !== 'undefined') {
+        const el = document.getElementById('wedding-customizer-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }
+      return;
+    }
     onSelectPhotoshoot(type);
-    if (type !== 'wedding') {
-      const cfg = photoshootMap[type] || DEFAULT_PHOTOSHOOTS[type] || DEFAULT_PHOTOSHOOTS.birthday;
-      setCustomSessionHours(cfg.sessionHours || 3);
+    const cfg = photoshootMap[type] || DEFAULT_PHOTOSHOOTS[type] || DEFAULT_PHOTOSHOOTS.birthday;
+    setCustomSessionHours(cfg.sessionHours || 3);
       setCustomLocationType(cfg.locationType || 'studio');
       setCustomPhotographers(cfg.crew?.photographers || 1);
       setCustomVideographers(cfg.crew?.videographers || 0);
@@ -160,7 +181,6 @@ export const PhotoshootSection: React.FC<PhotoshootSectionProps> = ({
       setCustomFrames15x20(0);
       setCustomPenDrive(cfg.deliverables?.penDrive ?? true);
       setCustomPenDriveBox(false);
-    }
   };
 
   // Calculate live price for photoshoot customizer
@@ -299,6 +319,15 @@ export const PhotoshootSection: React.FC<PhotoshootSectionProps> = ({
           price: currentShootPrice,
           customSelections: selections,
           unitPrice: currentShootPrice,
+          date: customDate || initialDate || '',
+          venue: customVenue || '',
+          photoshootType: activeConfig.type,
+          sessionHours: customSessionHours,
+          locationType: customLocationType,
+          photographers: customPhotographers,
+          videographers: customVideographers,
+          reelsCount: customReelsCount,
+          drone: customDrone,
         });
       }
     }
@@ -617,15 +646,26 @@ export const PhotoshootSection: React.FC<PhotoshootSectionProps> = ({
 
             {/* Live Price Pill */}
             <div className="bg-stone-900 text-white p-4 rounded-2xl text-left sm:text-right shrink-0 shadow-md min-w-[200px]">
-              <span className="text-[10px] text-amber-400 uppercase font-black tracking-wider block">
-                {isMl ? 'ഈ ഷൂട്ടിന്റെ എസ്റ്റിമേറ്റ്' : 'Estimated Shoot Price'}
-              </span>
-              <span className="text-2xl font-black text-white">
-                ₹{currentShootPrice.toLocaleString('en-IN')}
-              </span>
-              <span className="text-[10px] text-stone-400 block mt-0.5">
-                {isMl ? 'ജി.എസ്.ടി ഉൾപ്പെടെ • ഫ്ലെക്സിബിൾ' : 'Includes GST • Transparent'}
-              </span>
+              <div className="flex flex-col sm:items-end">
+                <span className="text-[10px] text-amber-400 uppercase font-black tracking-wider block">
+                  {isMl ? 'ഈ ഷൂട്ടിന്റെ എസ്റ്റിമേറ്റ്' : 'Estimated Shoot Price'}
+                </span>
+                <span className="text-2xl font-black text-white">
+                  ₹{currentShootPrice.toLocaleString('en-IN')}
+                </span>
+                <span className="text-[10px] text-stone-400 block mt-0.5">
+                  {isMl ? 'ജി.എസ്.ടി ഉൾപ്പെടെ • ഫ്ലെക്സിബിൾ' : 'Includes GST • Transparent'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSelectShootType(selectedPhotoshoot)}
+                  className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-stone-700 bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white text-[11px] font-bold transition cursor-pointer"
+                  title={isMl ? 'പാക്കേജ് ഡിഫോൾട്ടിലേക്ക് റീസെറ്റ് ചെയ്യുക' : 'Reset to package defaults'}
+                >
+                  <RotateCcw className="w-3 h-3 text-amber-400" />
+                  <span>{isMl ? 'പാക്കേജ് റീസെറ്റ് ചെയ്യുക' : 'Reset to Default'}</span>
+                </button>
+              </div>
             </div>
           </div>
 

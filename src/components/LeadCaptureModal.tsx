@@ -26,10 +26,10 @@ export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
     name: initialLead?.name || '',
     phone: initialLead?.phone || '',
     email: initialLead?.email || '',
-    address: initialLead?.address || 'കായംകുളം, ആലപ്പുഴ',
+    address: initialLead?.address || '',
     place: initialLead?.place || 'കായംകുളം',
-    weddingDate: initialLead?.weddingDate || '2026-12-20',
-    venueLocation: initialLead?.venueLocation || 'Royal Auditorium, Kayamkulam',
+    weddingDate: initialLead?.weddingDate || '',
+    venueLocation: initialLead?.venueLocation || '',
     notes: initialLead?.notes || '',
   });
 
@@ -40,10 +40,10 @@ export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
         name: initialLead.name || '',
         phone: initialLead.phone || '',
         email: initialLead.email || '',
-        address: initialLead.address || 'കായംകുളം, ആലപ്പുഴ',
+        address: initialLead.address || '',
         place: initialLead.place || 'കായംകുളം',
-        weddingDate: initialLead.weddingDate || '2026-12-20',
-        venueLocation: initialLead.venueLocation || 'Royal Auditorium, Kayamkulam',
+        weddingDate: initialLead.weddingDate || '',
+        venueLocation: initialLead.venueLocation || '',
         notes: initialLead.notes || '',
       });
     }
@@ -57,9 +57,11 @@ export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
-    if (!formData.name.trim()) newErrors.name = 'പേര് നൽകുക (Name required)';
-    if (!formData.phone.trim() || formData.phone.length < 10) {
-      newErrors.phone = 'ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക (Valid phone required)';
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      newErrors.phone = 'ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക (Valid 10-digit phone required)';
+    } else if (cleanPhone.length === 10 && !['6', '7', '8', '9'].includes(cleanPhone.charAt(0))) {
+      newErrors.phone = 'ഇന്ത്യൻ മൊബൈൽ നമ്പറുകൾ 6, 7, 8, 9 ലാണ് തുടങ്ങുന്നത്. ശരിയായ WhatsApp നമ്പർ നൽകുക (Valid Indian mobile required)';
     }
 
     if (Object.keys(newErrors).length > 0) {

@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { X, Mail, Phone, Lock, Sparkles, CheckCircle2 } from 'lucide-react';
+import { auth } from '@/lib/firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -20,14 +22,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   if (!isOpen) return null;
 
-  const handleGoogleSignIn = () => {
-    // Mock Google Sign-In with realistic prompt simulation
-    const mockUser = {
-      name: 'അഭിജിത്ത് വർമ്മ',
-      emailOrPhone: 'abhijith.varma@gmail.com',
-    };
-    onSuccess(mockUser);
-    onClose();
+  const handleGoogleSignIn = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: 'select_account',
+      });
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      onSuccess({
+        name: user.displayName || 'Google User',
+        emailOrPhone: user.email || '+91 9847123456',
+      });
+      onClose();
+    } catch (err: any) {
+      if (err.code !== 'auth/popup-closed-by-user') {
+        alert(err.message || 'Google sign in failed');
+      }
+    }
   };
 
   const handleSendOtp = (e: React.FormEvent) => {

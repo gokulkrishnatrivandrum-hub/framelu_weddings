@@ -31,6 +31,9 @@ interface NavbarProps {
   studioContact: StudioContactConfig;
   language: 'en' | 'ml';
   onToggleLanguage: () => void;
+  openAiPlannerModal?: () => void;
+  openCustomerDashboard?: () => void;
+  savedBillsCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -45,6 +48,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   studioContact,
   language,
   onToggleLanguage,
+  openAiPlannerModal,
+  openCustomerDashboard,
+  savedBillsCount,
 }) => {
   const isMl = language === 'ml';
 
@@ -152,12 +158,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-black text-xl tracking-tight text-stone-900">
-                FRAMELU <span className="text-amber-600 font-black">WEDDINGS</span>
+                FRAMELU <span className="text-amber-600 font-black">EVENT PLANNER</span>
               </span>
-              <Heart className="w-3.5 h-3.5 text-rosewood-500 fill-rosewood-500" />
+              <Heart className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
             </div>
             <p className="text-[11px] font-semibold text-stone-500 tracking-wide">
-              Framelu Wedding Company • {studioContact.destination.split(',')[0]}
+              Framelu Event Planner • {studioContact.destination.split(',')[0]}
             </p>
           </div>
         </div>
@@ -211,6 +217,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Images className="w-4 h-4 text-amber-600" />
             <span>{isMl ? 'ഗാലറി & വർക്കുകൾ' : 'Gallery & Works'}</span>
           </button>
+
+          {openAiPlannerModal && (
+            <button
+              type="button"
+              onClick={openAiPlannerModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-amber-600 hover:from-purple-700 hover:to-amber-700 text-white rounded-xl text-xs sm:text-sm font-black shadow-md shadow-purple-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer ml-1 animate-pulse"
+              title="Open AI Wedding Planner & Scheduler"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>{isMl ? '✨ AI പ്ലാനർ' : '✨ AI Planner'}</span>
+            </button>
+          )}
         </nav>
 
         {/* Right Section: Studio Partner, Language Switcher & Customer Sign In */}
@@ -244,32 +262,58 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
           ) : customerUser ? (
-            /* Active Customer Login Highlight */
-            <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 border-2 border-emerald-500 text-emerald-950 p-1 pl-2.5 pr-2 rounded-2xl shadow-md ring-2 ring-emerald-400/30">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
-                  {customerUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="text-left leading-tight min-w-0">
-                  <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                    <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white px-1 py-0.5 rounded">
-                      {isMl ? 'കസ്റ്റമർ ലോഗിൻ' : 'Customer Active'}
+            /* Active Customer Login Highlight & Dashboard Button */
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {openCustomerDashboard && (
+                <button
+                  type="button"
+                  onClick={openCustomerDashboard}
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-700 hover:to-amber-900 text-white font-black text-xs px-3 py-1.5 rounded-2xl shadow-sm transition cursor-pointer ring-2 ring-amber-500/20"
+                  title={isMl ? 'എന്റെ ഡാഷ്ബോർഡ് തുറക്കുക' : 'Open My Dashboard'}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>{isMl ? 'എന്റെ ഡാഷ്ബോർഡ്' : 'My Dashboard'}</span>
+                  {savedBillsCount !== undefined && savedBillsCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-white text-amber-900 text-[10px] font-black flex items-center justify-center">
+                      {savedBillsCount}
                     </span>
-                  </div>
-                  <p className="text-xs font-black text-stone-900 truncate max-w-[100px] sm:max-w-[140px]">
-                    {customerUser.name}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={onCustomerLogout}
-                className="text-[10px] font-black bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-2 py-1 rounded-xl transition cursor-pointer shrink-0"
-                title="Customer Logout"
+                  )}
+                </button>
+              )}
+
+              <div
+                onClick={openCustomerDashboard}
+                className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 border-2 border-emerald-500 text-emerald-950 p-1 pl-2.5 pr-2 rounded-2xl shadow-xs ring-2 ring-emerald-400/30 cursor-pointer hover:shadow-md transition"
+                title={isMl ? 'ഡാഷ്ബോർഡ് കാണാൻ ക്ലിക്ക് ചെയ്യുക' : 'Click to view dashboard'}
               >
-                {isMl ? 'ലോഗ് ഔട്ട്' : 'Logout'}
-              </button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">
+                    {customerUser.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="text-left leading-tight min-w-0">
+                    <div className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white px-1 py-0.5 rounded">
+                        {isMl ? 'കസ്റ്റമർ ലോഗിൻ' : 'Customer Active'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-black text-stone-900 truncate max-w-[80px] sm:max-w-[130px]">
+                      {customerUser.name}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCustomerLogout();
+                  }}
+                  className="text-[10px] font-black bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-2 py-1 rounded-xl transition cursor-pointer shrink-0"
+                  title="Customer Logout"
+                >
+                  {isMl ? 'ലോഗ് ഔട്ട്' : 'Logout'}
+                </button>
+              </div>
             </div>
           ) : (
             /* Neither Logged In: Show both options clearly */
@@ -328,7 +372,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             type="button"
             onClick={onToggleLanguage}
             className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 font-bold text-xs transition shadow-2xs"
-            title="Switch Language / ഭാഷ മാറ്റുക"
+            title={language === 'ml' ? 'ഭാഷ മാറ്റുക (Switch to English)' : 'Switch Language (മലയാളം)'}
           >
             <Globe className="w-3.5 h-3.5 text-amber-600" />
             <span className={language === 'ml' ? 'text-amber-800 font-black' : 'text-stone-400'}>മല</span>
@@ -387,6 +431,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Images className="w-3.5 h-3.5 text-amber-600" />
           <span>{isMl ? 'ഗാലറി' : 'Gallery'}</span>
         </button>
+
+        {openAiPlannerModal && (
+          <button
+            onClick={openAiPlannerModal}
+            className="flex-1 py-2.5 text-center border-b-2 border-transparent bg-gradient-to-r from-purple-600 to-amber-600 text-white flex items-center justify-center gap-1 font-black text-[11px]"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span>{isMl ? 'AI പ്ലാനർ' : 'AI'}</span>
+          </button>
+        )}
       </div>
     </header>
   );

@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Framelu Wedding Company | Premium Photography & Films',
-  description: 'Framelu Wedding Company - Premium Wedding Photography, Cinematography & Event Planning. Custom packages and live budget estimation.',
+  title: 'Framelu Event Planner | Premium Photography & Films',
+  description: 'Framelu Event Planner - Premium Wedding & Event Photography, Cinematography & Event Planning. Custom packages and live budget estimation.',
 };
 
 export default function RootLayout({

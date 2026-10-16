@@ -80,6 +80,7 @@ import {
 } from '@/constants/defaults';
 import { calculateCustomQuote, CalculationResult } from '@/utils/calculator';
 import { PdfQuotationView } from '@/components/PdfQuotationView';
+import { WhatsAppShareModal } from '@/components/WhatsAppShareModal';
 import {
   savePriceRatesToCloud,
   saveStudioContactToCloud,
@@ -289,7 +290,7 @@ interface AdminDashboardProps {
   setCoupons?: React.Dispatch<React.SetStateAction<CouponCode[]>>;
   photoshoots?: PhotoshootConfig[];
   setPhotoshoots?: React.Dispatch<React.SetStateAction<PhotoshootConfig[]>>;
-  onCloseAdmin: () => void;
+  onCloseAdmin?: () => void;
   language?: 'en' | 'ml';
 }
 
@@ -384,6 +385,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [savedSuccess, setSavedSuccess] = useState('');
   const [selectedLead, setSelectedLead] = useState<CustomerLead | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
 
   // Gallery Filter & New Project State
   const [galleryCategoryFilter, setGalleryCategoryFilter] = useState<string>('all');
@@ -1751,7 +1753,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1">
-                  Full Length Traditional Video (₹)
+                  Full Length Video Editing Rate (Per Camera/Videographer) (₹) / പെർ ക്യാമറ വീഡിയോ എഡിറ്റിംഗ് ചാർജ്
                 </label>
                 <input
                   type="number"
@@ -5515,116 +5517,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span>Preview & Download PDF</span>
                 </button>
 
-                {/* WhatsApp Full Plan Button */}
-                <a
-                  href={`https://wa.me/91${selectedLead.phone.replace(/[^0-9]/g, '')}?text=${(() => {
-                    const baseSubtotal = selectedLead.totalPrice || 0;
-                    const tax = selectedLead.taxAmount || Math.round(baseSubtotal * 0.18);
-                    const grandTotal = selectedLead.grandTotal || (baseSubtotal + tax);
-                    const advance = Math.round(grandTotal * 0.25);
-                    const onShoot = Math.round(grandTotal * 0.50);
-                    const delivery = grandTotal - advance - onShoot;
-
-                    let msg = `*FRAMELU WEDDING COMPANY - WEDDING PHOTOGRAPHY QUOTATION*\n`;
-                    msg += `Dear ${selectedLead.name},\n`;
-                    msg += `Thank you for choosing Framelu Wedding Company! Here is the complete breakdown of your customized package:\n\n`;
-                    msg += `*EVENT DETAILS:*\n`;
-                    msg += `• Wedding Date: ${selectedLead.weddingDate || 'TBD'}\n`;
-                    msg += `• Venue: ${selectedLead.venueLocation || selectedLead.place || selectedLead.address || 'Kerala'}\n`;
-                    msg += `• Scope: ${selectedLead.side === 'groom' ? 'Groom Side' : selectedLead.side === 'bride' ? 'Bride Side' : 'Both Sides Combined'}\n\n`;
-
-                    if (selectedLead.groomEvents) {
-                      const activeGroom = KERALA_EVENTS.filter((e) => selectedLead.groomEvents?.[e.id]?.enabled);
-                      if (activeGroom.length > 0) {
-                        msg += `*🤵 GROOM SIDE CEREMONIES & CREW:*\n`;
-                        activeGroom.forEach((evt) => {
-                          const cfg = selectedLead.groomEvents?.[evt.id];
-                          if (cfg) {
-                            const crew: string[] = [];
-                            if (cfg.traditionalPhotographers) crew.push(`${cfg.traditionalPhotographers} Traditional Photo`);
-                            if (cfg.traditionalVideographers) crew.push(`${cfg.traditionalVideographers} Traditional Video`);
-                            if (cfg.candidPhotographers) crew.push(`${cfg.candidPhotographers} Candid Photo`);
-                            if (cfg.candidVideographers) crew.push(`${cfg.candidVideographers} Cinematic Video`);
-                            if (cfg.drone) crew.push(`4K Drone Aerial`);
-                            if (cfg.youtubeLive) crew.push(`YouTube Live`);
-                            if (cfg.auditoriumLive) crew.push(`Hall LED Live`);
-                            if (cfg.photoLivePrinting) crew.push(`Guest Live Printing`);
-                            msg += `• ${evt.nameEn}: ${crew.join(', ')}\n`;
-                          }
-                        });
-                        msg += `\n`;
-                      }
-                    }
-
-                    if (selectedLead.brideEvents) {
-                      const activeBride = KERALA_EVENTS.filter((e) => selectedLead.brideEvents?.[e.id]?.enabled);
-                      if (activeBride.length > 0) {
-                        msg += `*👰 BRIDE SIDE CEREMONIES & CREW:*\n`;
-                        activeBride.forEach((evt) => {
-                          const cfg = selectedLead.brideEvents?.[evt.id];
-                          if (cfg) {
-                            const crew: string[] = [];
-                            if (cfg.traditionalPhotographers) crew.push(`${cfg.traditionalPhotographers} Traditional Photo`);
-                            if (cfg.traditionalVideographers) crew.push(`${cfg.traditionalVideographers} Traditional Video`);
-                            if (cfg.candidPhotographers) crew.push(`${cfg.candidPhotographers} Candid Photo`);
-                            if (cfg.candidVideographers) crew.push(`${cfg.candidVideographers} Cinematic Video`);
-                            if (cfg.drone) crew.push(`4K Drone Aerial`);
-                            if (cfg.youtubeLive) crew.push(`YouTube Live`);
-                            if (cfg.auditoriumLive) crew.push(`Hall LED Live`);
-                            if (cfg.photoLivePrinting) crew.push(`Guest Live Printing`);
-                            msg += `• ${evt.nameEn}: ${crew.join(', ')}\n`;
-                          }
-                        });
-                        msg += `\n`;
-                      }
-                    }
-
-                    if (selectedLead.deliverables) {
-                      const d = selectedLead.deliverables;
-                      msg += `*📦 DELIVERABLES & KEEPSAKES:*\n`;
-                      msg += `• Video Quality: ${d.videoQuality === '4k' ? '4K Ultra HD' : 'Full HD 1080p'}\n`;
-                      const films: string[] = [];
-                      if (d.fullLengthVideo) films.push('Full Length Traditional Film');
-                      if (d.highlightVideo) films.push('Cinematic Highlight (3-5 min)');
-                      if (d.teaserVideo) films.push('Cinematic Teaser Promo');
-                      if (d.reelsCount) films.push(`${d.reelsCount} Social Reels`);
-                      const coverName = (() => {
-                        const t = d.albumPaperType;
-                        if (t === 'normal') return 'Normal Cover';
-                        if (t === 'premium') return 'Premium Cover';
-                        if (t === 'extra_premium') return 'Extra Premium Cover';
-                        if (t === 'leather') return 'Leather Cover';
-                        if (t === 'glass' || t === 'acrylic_cover') return 'Glass Cover';
-                        if (t === 'full_glass' || t === 'velvet_box') return 'Full Glass Cover';
-                        return (t ? t.replace(/_/g, ' ') : 'Normal') + ' Cover';
-                      })();
-                      if (d.mainAlbumsCount) msg += `• Main Album: ${d.mainAlbumsCount} Nos (${d.mainAlbumSheets} Sheets, ${coverName})\n`;
-                      const frames: string[] = [];
-                      if (d.frames_8x12) frames.push(`${d.frames_8x12} Nos 8x12`);
-                      if (d.frames_18x12) frames.push(`${d.frames_18x12} Nos 18x12`);
-                      if (d.frames_15x20) frames.push(`${d.frames_15x20} Nos 15x20 Master Canvas`);
-                      if (frames.length) msg += `• Photo Frames: ${frames.join(', ')}\n`;
-                      msg += `\n`;
-                    }
-
-                    msg += `*FINANCIAL SUMMARY:*\n`;
-                    msg += `• Package Base Subtotal: ₹${baseSubtotal.toLocaleString('en-IN')}\n`;
-                    msg += `• GST (18%): ₹${tax.toLocaleString('en-IN')}\n`;
-                    msg += `• *Grand Total (Incl. Tax): ₹${grandTotal.toLocaleString('en-IN')}*\n\n`;
-                    msg += `*PAYMENT SCHEDULE:*\n`;
-                    msg += `1. Advance Booking (25%): ₹${advance.toLocaleString('en-IN')}\n`;
-                    msg += `2. On Shoot Completion (50%): ₹${onShoot.toLocaleString('en-IN')}\n`;
-                    msg += `3. On Final Delivery (25%): ₹${delivery.toLocaleString('en-IN')}\n\n`;
-                    msg += `Best Regards,\n*Framelu Wedding Company*\nPhone: ${studioContact.phone}\n${studioContact.destination}`;
-                    return encodeURIComponent(msg);
-                  })()}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition"
+                {/* WhatsApp Full Plan with PDF Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsWhatsAppModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                  title="Send Quotation to Customer via WhatsApp with PDF"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  <span>Send Full Plan to WhatsApp</span>
-                </a>
+                  <span>Send Quotation to WhatsApp</span>
+                </button>
 
                 {/* Direct Call */}
                 <a
@@ -5871,6 +5773,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           groomEvents={selectedLead.groomEvents}
           brideEvents={selectedLead.brideEvents}
           deliverables={selectedLead.deliverables}
+        />
+      )}
+
+      {/* WhatsApp Share Modal with PDF Attachment from Admin */}
+      {selectedLead && isWhatsAppModalOpen && (
+        <WhatsAppShareModal
+          isOpen={isWhatsAppModalOpen}
+          onClose={() => setIsWhatsAppModalOpen(false)}
+          lead={selectedLead}
+          calculation={{
+            totalPrice: selectedLead.totalPrice || 0,
+            items: [],
+            eventTotals: {},
+            deliverablesTotal: 0,
+            groomCrewTotal: 0,
+            brideCrewTotal: 0,
+            photographyTotal: selectedLead.totalPrice || 0,
+            otherServicesTotal: 0,
+          }}
+          userRole="studio"
+          studioContact={studioContact}
+          onDownloadPdf={() => setIsPdfModalOpen(true)}
+          language={language}
         />
       )}
     </div>

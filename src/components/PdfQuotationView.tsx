@@ -15,6 +15,7 @@ import {
 } from '@/types';
 import { CalculationResult } from '@/utils/calculator';
 import { KERALA_EVENTS, DEFAULT_CUSTOM_PRINTS } from '@/constants/defaults';
+import { WhatsAppShareModal } from '@/components/WhatsAppShareModal';
 import {
   Printer,
   Share2,
@@ -89,8 +90,9 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
 
   const [isDownloading, setIsDownloading] = useState(false);
   const [showPostDownloadModal, setShowPostDownloadModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
-  const [recipientEmail, setRecipientEmail] = useState(studioContact.email || 'frameluweddings@gmail.com');
+  const [recipientEmail, setRecipientEmail] = useState(studioContact.email || 'framluweddings@gmail.com');
   const [copiedEmail, setCopiedEmail] = useState(false);
 
   // Ensure pure print mode when quotation modal is active
@@ -108,7 +110,7 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
 
   if (!isOpen) return null;
 
-  const quoteNo = lead.id || `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const quoteNo = lead.id || `LFB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const quoteDate = new Date().toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'long',
@@ -145,10 +147,10 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
   const shootCompleteAmount = Math.round(grandTotalWithTax * 0.50);
   const finalDeliveryAmount = grandTotalWithTax - advanceAmount - shootCompleteAmount;
 
-  // Dynamic Studio Partner Branding vs Default Framelu Wedding Company (Requirement 6)
+  // Dynamic Studio Partner Branding vs Default Framelu Wedding Planner
   const displayBrandName = studioUser?.studioName
     ? studioUser.studioName.toUpperCase()
-    : 'FRAMELU WEDDING COMPANY';
+    : 'LEFT FRAME BLUE WEDDING';
   const displaySubheader = isStandalone
     ? (shootDetails?.titleMl ? `${shootDetails.titleMl} (${shootDetails.titleEn || ''})` : isMl ? 'പ്രൊഫഷണൽ ഫോട്ടോഷൂട്ട് എസ്റ്റിമേറ്റ്' : 'Professional Photoshoot & Cinema Estimate')
     : studioUser?.studioName
@@ -156,8 +158,8 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
     : (isMl ? 'പ്രീമിയം വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫിയും ഫിലിംസും' : 'Premium Wedding Photography, Cinematography & Keepsake Albums');
   const displayLocation = studioUser?.place || studioUser?.address || studioContact.destination;
   const displayPhone = studioUser?.phone || studioContact.phone || '+91 6238747722';
-  const displayEmail = studioUser?.email || studioContact.email || 'frameluweddings@gmail.com';
-  const displaySignatory = studioUser?.studioName || 'FRAMELU WEDDING COMPANY';
+  const displayEmail = studioUser?.email || studioContact.email || 'framluweddings@gmail.com';
+  const displaySignatory = studioUser?.studioName || 'LEFT FRAME BLUE WEDDING';
   const targetWhatsappNumber = studioContact.whatsapp || '916238747722';
 
   const getSideName = (s: SideSelection) => {
@@ -652,16 +654,15 @@ Email: ${lead.email || 'N/A'}`;
             </button>
 
             {/* WhatsApp Enquiry Button */}
-            <a
-              href={`https://wa.me/${studioContact.whatsapp || '919876543210'}?text=${whatsappMessage}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3.5 rounded-xl text-xs transition shadow-sm"
-              title="Send enquiry with quotation to company WhatsApp"
+            <button
+              type="button"
+              onClick={() => setShowWhatsAppModal(true)}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3.5 rounded-xl text-xs transition shadow-sm cursor-pointer"
+              title="Send enquiry with quotation via WhatsApp"
             >
               <Share2 className="w-4 h-4" />
-              <span>{isMl ? 'WhatsApp എൻക്വയറി' : 'WhatsApp Enquiry'}</span>
-            </a>
+              <span>{isMl ? 'WhatsApp വഴി അയക്കുക' : 'WhatsApp Share'}</span>
+            </button>
 
             {/* Email Enquiry Button */}
             <button
@@ -1429,15 +1430,14 @@ Email: ${lead.email || 'N/A'}`;
                   <span>{isMl ? 'PDF ഡൗൺലോഡ് ചെയ്യുക' : 'Download Quotation PDF'}</span>
                 </button>
 
-                <a
-                  href={`https://wa.me/${studioContact.whatsapp || '919876543210'}?text=${whatsappMessage}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition"
+                <button
+                  type="button"
+                  onClick={() => setShowWhatsAppModal(true)}
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition cursor-pointer"
                 >
                   <Share2 className="w-4 h-4" />
-                  <span>{isMl ? 'WhatsApp എൻക്വയറി' : 'WhatsApp Enquiry'}</span>
-                </a>
+                  <span>{isMl ? 'WhatsApp വഴി അയക്കുക' : 'Send via WhatsApp'}</span>
+                </button>
 
                 <button
                   type="button"
@@ -1476,19 +1476,21 @@ Email: ${lead.email || 'N/A'}`;
             <p className="text-xs sm:text-sm text-stone-600 mt-1.5 leading-relaxed">
               {isMl
                 ? 'നിങ്ങളുടെ കൊട്ടേഷൻ PDF ഡിവൈസിൽ സേവ് ആയിട്ടുണ്ട്. ഈ കൊട്ടേഷൻ കമ്പനിയിലേക്ക് അയച്ച് തീയതി ലഭ്യതയും ക്രൂവും ഉടൻ ഉറപ്പാക്കുക.'
-                : 'Your quotation PDF has been downloaded. You can now send this quotation to Framelu Wedding Company via WhatsApp or Email to confirm crew availability.'}
+                : 'Your quotation PDF has been downloaded. You can now send this quotation to Framelu Event Planner via WhatsApp or Email to confirm crew availability.'}
             </p>
 
             <div className="mt-5 space-y-2.5">
-              <a
-                href={`https://wa.me/${studioContact.whatsapp || '919876543210'}?text=${whatsappMessage}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2"
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPostDownloadModal(false);
+                  setShowWhatsAppModal(true);
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Share2 className="w-4 h-4" />
-                <span>{isMl ? 'WhatsApp വഴി കമ്പനിക്ക് അയക്കുക' : 'Send via WhatsApp to Studio'}</span>
-              </a>
+                <span>{isMl ? 'WhatsApp വഴി അയക്കുക' : 'Send via WhatsApp'}</span>
+              </button>
 
               <button
                 type="button"
@@ -1645,6 +1647,20 @@ Email: ${lead.email || 'N/A'}`;
           </div>
         </div>
       )}
+
+      {/* WhatsApp Share Modal (Requirement 4) */}
+      <WhatsAppShareModal
+        isOpen={showWhatsAppModal}
+        onClose={() => setShowWhatsAppModal(false)}
+        lead={lead}
+        calculation={calculation}
+        userRole={studioUser ? 'studio' : 'customer'}
+        studioContact={studioContact}
+        onDownloadPdf={handleDownloadPdf}
+        isDownloadingPdf={isDownloading}
+        language={language}
+      />
     </div>
   );
 };
+

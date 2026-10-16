@@ -13,7 +13,7 @@ interface SideSelectorProps {
 export const SideSelector: React.FC<SideSelectorProps> = ({
   selectedSide,
   onSelectSide,
-  language = 'ml',
+  language = 'en',
 }) => {
   const isMl = language === 'ml';
 
@@ -22,7 +22,7 @@ export const SideSelector: React.FC<SideSelectorProps> = ({
       <div className="text-center max-w-2xl mx-auto mb-8">
         <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-100 to-rose-100 text-amber-900 border border-amber-200/80 mb-2.5 shadow-2xs">
           <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-          {isMl ? 'ഘട്ടം 1 • Step 1' : 'Step 1 • Side Selection'}
+          {isMl ? 'ഘട്ടം 1' : 'Step 1 • Side Selection'}
         </span>
         <h2 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight">
           {isMl ? 'ആരുടെ ഫോട്ടോഗ്രാഫി വർക്ക് ആണ് ആവശ്യം?' : 'Whose Photography Coverage is Required?'}
@@ -138,7 +138,7 @@ export const SideSelector: React.FC<SideSelectorProps> = ({
 
           <div>
             <div className="inline-block bg-gradient-to-r from-emerald-600 to-teal-700 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider mb-2.5 shadow-2xs">
-              {isMl ? 'ഏറ്റവും ജനപ്രിയം • Combo Deal' : 'Most Popular • Combo Deal'}
+              {isMl ? 'ഏറ്റവും ജനപ്രിയം' : 'Most Popular • Combo Deal'}
             </div>
 
             {/* Combined Groom & Bride Symbols (Requirement 4) */}

@@ -543,15 +543,21 @@ export const subscribeStudioPartners = (onData: (data: StudioUser[]) => void) =>
 };
 
 export const saveStudioPartnerToCloud = async (partner: StudioUser) => {
-  const partnerId = partner.id || `STUDIO-${partner.phone.replace(/[^0-9]/g, '')}`;
+  const cleanEmail = (partner.email || '').toLowerCase().trim();
+  const partnerId = cleanEmail
+    ? `STUDIO-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`
+    : (partner.id || `STUDIO-${partner.phone.replace(/[^0-9]/g, '')}`);
+
   const cleanPartner = {
     ...partner,
     id: partnerId,
+    email: cleanEmail,
     registeredAt: partner.registeredAt || new Date().toISOString(),
   };
 
   if (typeof window !== 'undefined') {
     localStorage.setItem('wedding_studio_user', JSON.stringify(cleanPartner));
+    localStorage.setItem(`wedding_studio_${cleanEmail}`, JSON.stringify(cleanPartner));
   }
 
   try {
@@ -561,6 +567,51 @@ export const saveStudioPartnerToCloud = async (partner: StudioUser) => {
   } catch (err) {
     console.error('Failed to save studio partner to Firestore:', err);
     return cleanPartner;
+  }
+};
+
+export const getStudioPartnerByEmail = async (email: string): Promise<StudioUser | null> => {
+  if (!email) return null;
+  const cleanEmail = email.toLowerCase().trim();
+  const docId = `STUDIO-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+
+  // Check localStorage first for instant 0ms speed
+  if (typeof window !== 'undefined') {
+    const cachedSpecific = localStorage.getItem(`wedding_studio_${cleanEmail}`);
+    if (cachedSpecific) {
+      try {
+        return JSON.parse(cachedSpecific);
+      } catch (e) {}
+    }
+    const cachedPartners = localStorage.getItem('framlu_studio_partners_cache');
+    if (cachedPartners) {
+      try {
+        const list = JSON.parse(cachedPartners);
+        const found = list.find((p: any) => p.email?.toLowerCase().trim() === cleanEmail);
+        if (found) return found;
+      } catch (e) {}
+    }
+  }
+
+  try {
+    // 1200ms timeout so login NEVER freezes or blocks the user
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200));
+    const fetchPromise = getDoc(doc(db, 'studio_partners', docId)).then((docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as StudioUser;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`wedding_studio_${cleanEmail}`, JSON.stringify(data));
+        }
+        return data;
+      }
+      return null;
+    });
+
+    const result = await Promise.race([fetchPromise, timeoutPromise]);
+    return result;
+  } catch (err) {
+    console.warn('getStudioPartnerByEmail Firestore note:', err);
+    return null;
   }
 };
 
@@ -608,4 +659,180 @@ export const savePhotoshootsToCloud = async (shoots: PhotoshootConfig[]) => {
     return false;
   }
 };
+
+// ==========================================
+// 13. CUSTOMER ACCOUNTS / USERS & AUTH (Requirement 2 & 3)
+// ==========================================
+export const subscribeCustomerUsers = (onData: (users: CustomerUser[]) => void) => {
+  try {
+    const colRef = collection(db, 'customer_users');
+    return onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: CustomerUser[] = [];
+        snapshot.forEach((d) => {
+          list.push({ ...d.data(), id: d.id } as CustomerUser);
+        });
+        onData(list);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_customer_users_cache', JSON.stringify(list));
+        }
+      },
+      (err) => {
+        console.warn('Firestore customer users subscription note:', err.message);
+      }
+    );
+  } catch (err) {
+    console.warn('Firestore subscribeCustomerUsers failed:', err);
+    return () => {};
+  }
+};
+
+export const saveCustomerUserToCloud = async (user: CustomerUser): Promise<CustomerUser> => {
+  const cleanEmail = (user.email || '').toLowerCase().trim();
+  const cleanUsername = (user.username || (cleanEmail ? cleanEmail.split('@')[0] : '')).toLowerCase().trim();
+  const userId = cleanEmail
+    ? `CUST-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`
+    : `CUST-${cleanUsername.replace(/[^a-z0-9]/g, '_')}`;
+
+  const cleanUser: CustomerUser = {
+    ...user,
+    id: userId,
+    userId: cleanUsername || user.userId || cleanEmail.split('@')[0],
+    email: cleanEmail,
+    username: cleanUsername,
+    registeredAt: user.registeredAt || new Date().toISOString(),
+  };
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('framlu_wedding_user', JSON.stringify(cleanUser));
+    if (cleanEmail) localStorage.setItem(`cust_user_${cleanEmail}`, JSON.stringify(cleanUser));
+    if (cleanUsername) localStorage.setItem(`cust_user_${cleanUsername}`, JSON.stringify(cleanUser));
+  }
+
+  try {
+    const docRef = doc(db, 'customer_users', userId);
+    await setDoc(docRef, cleanUser, { merge: true });
+    return cleanUser;
+  } catch (err) {
+    console.error('Failed to save customer user to Firestore:', err);
+    return cleanUser;
+  }
+};
+
+export const getCustomerUserByIdentifier = async (identifier: string): Promise<CustomerUser | null> => {
+  if (!identifier) return null;
+  const clean = identifier.toLowerCase().trim();
+  const emailDocId = `CUST-${clean.replace(/[^a-z0-9]/g, '_')}`;
+
+  // Check localStorage first for instant 0ms speed
+  if (typeof window !== 'undefined') {
+    const cached = localStorage.getItem(`cust_user_${clean}`);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {}
+    }
+    const savedUserRaw = localStorage.getItem('framlu_wedding_user');
+    if (savedUserRaw) {
+      try {
+        const u = JSON.parse(savedUserRaw);
+        if (
+          u.email?.toLowerCase().trim() === clean ||
+          u.username?.toLowerCase().trim() === clean ||
+          u.userId?.toLowerCase().trim() === clean
+        ) {
+          return u;
+        }
+      } catch (e) {}
+    }
+    const cachedUsers = localStorage.getItem('framlu_customer_users_cache');
+    if (cachedUsers) {
+      try {
+        const list = JSON.parse(cachedUsers);
+        const found = list.find((u: any) =>
+          u.email?.toLowerCase().trim() === clean ||
+          u.username?.toLowerCase().trim() === clean ||
+          u.userId?.toLowerCase().trim() === clean ||
+          (u.phone && u.phone.replace(/\D/g, '') === clean.replace(/\D/g, ''))
+        );
+        if (found) return found;
+      } catch (e) {}
+    }
+  }
+
+  try {
+    // 1200ms timeout so UI never freezes
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200));
+
+    const fetchDoc = getDoc(doc(db, 'customer_users', emailDocId)).then(async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as CustomerUser;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(`cust_user_${clean}`, JSON.stringify(data));
+        }
+        return data;
+      }
+      return null;
+    });
+
+    const result = await Promise.race([fetchDoc, timeoutPromise]);
+    if (result) return result;
+
+    // Check cached list fallback
+    if (typeof window !== 'undefined') {
+      const cachedUsers = localStorage.getItem('framlu_customer_users_cache');
+      if (cachedUsers) {
+        try {
+          const list = JSON.parse(cachedUsers);
+          const found = list.find((u: any) =>
+            u.email?.toLowerCase().trim() === clean ||
+            u.username?.toLowerCase().trim() === clean ||
+            u.userId?.toLowerCase().trim() === clean
+          );
+          if (found) return found;
+        } catch (e) {}
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('getCustomerUserByIdentifier error:', err);
+    return null;
+  }
+};
+
+export const updateCustomerUserPassword = async (
+  emailOrUsername: string,
+  newPassword: string
+): Promise<boolean> => {
+  if (!emailOrUsername || !newPassword) return false;
+  const clean = emailOrUsername.toLowerCase().trim();
+  const existing = await getCustomerUserByIdentifier(clean);
+  const targetEmail = existing?.email || (clean.includes('@') ? clean : `${clean}@framelu.com`);
+  const docId = `CUST-${targetEmail.toLowerCase().trim().replace(/[^a-z0-9]/g, '_')}`;
+
+  try {
+    const docRef = doc(db, 'customer_users', docId);
+    await setDoc(
+      docRef,
+      {
+        password: newPassword,
+        lastPasswordResetAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    if (typeof window !== 'undefined') {
+      const updatedUser = { ...(existing || {}), password: newPassword };
+      localStorage.setItem(`cust_user_${targetEmail}`, JSON.stringify(updatedUser));
+      localStorage.setItem(`cust_user_${clean}`, JSON.stringify(updatedUser));
+      localStorage.setItem('framlu_wedding_user', JSON.stringify(updatedUser));
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to update password in Firestore:', err);
+    return false;
+  }
+};
+
 

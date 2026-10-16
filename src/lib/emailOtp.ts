@@ -129,7 +129,7 @@ export async function sendOtpEmail({
           Authorization: `Bearer ${resendApiKey}`,
         },
         body: JSON.stringify({
-          from: process.env.EMAIL_FROM || 'Framlu Weddings <onboarding@resend.dev>',
+          from: process.env.EMAIL_FROM || 'Framlu Weddings <noreply@framelu.com>',
           to: [cleanEmail],
           subject: `${otp} is your Framlu Weddings verification code`,
           html: htmlContent,

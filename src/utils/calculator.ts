@@ -24,6 +24,8 @@ export interface CalculationResult {
   packageDiscount?: number;
   activePackageTitle?: string;
   activePackageTitleMl?: string;
+  totalVideographers?: number;
+  maxVideographersPerEvent?: number;
 }
 
 
@@ -44,6 +46,8 @@ export function calculateCustomQuote(
   let groomCrewTotal = 0;
   let brideCrewTotal = 0;
   let otherServicesTotal = 0;
+  let totalVideographers = 0;
+  let maxVideographersPerEvent = 0;
 
 
   // 1. Groom Side Events
@@ -51,6 +55,12 @@ export function calculateCustomQuote(
     for (const evt of KERALA_EVENTS) {
       const cfg = groomEvents[evt.id];
       if (!cfg || !cfg.enabled) continue;
+
+      const eventVids = (cfg.traditionalVideographers || 0) + (cfg.candidVideographers || 0);
+      totalVideographers += eventVids;
+      if (eventVids > maxVideographersPerEvent) {
+        maxVideographersPerEvent = eventVids;
+      }
 
       let evtSum = 0;
 
@@ -181,6 +191,12 @@ export function calculateCustomQuote(
       const cfg = brideEvents[evt.id];
       if (!cfg || !cfg.enabled) continue;
 
+      const eventVids = (cfg.traditionalVideographers || 0) + (cfg.candidVideographers || 0);
+      totalVideographers += eventVids;
+      if (eventVids > maxVideographersPerEvent) {
+        maxVideographersPerEvent = eventVids;
+      }
+
       let evtSum = 0;
 
       if (cfg.traditionalPhotographers > 0) {
@@ -307,76 +323,86 @@ export function calculateCustomQuote(
   // 3. Deliverables & Outputs
   let deliverablesTotal = 0;
 
-  // Video resolution
-  if (deliverables.videoQuality === '4k') {
-    deliverablesTotal += rates.resolution4kAddon;
-    items.push({
-      id: 'res_4k_upgrade',
-      category: 'video',
-      title: '4K Ultra HD Master Resolution Video Package',
-      titleMl: '4K അൾട്രാ എച്ച്ഡി മാസ്റ്റർ വീഡിയോ ഔട്ട്പുട്ട്',
-      qty: 1,
-      unitPrice: rates.resolution4kAddon,
-      totalPrice: rates.resolution4kAddon,
-      deletable: true,
-    });
-  }
+  // Video Deliverables (Only calculated and added if videographers are present in the crew!)
+  if (totalVideographers > 0) {
+    // Video resolution upgrade
+    if (deliverables.videoQuality === '4k') {
+      deliverablesTotal += rates.resolution4kAddon;
+      items.push({
+        id: 'res_4k_upgrade',
+        category: 'video',
+        title: '4K Ultra HD Master Resolution Video Package',
+        titleMl: '4K അൾട്രാ എച്ച്ഡി മാസ്റ്റർ വീഡിയോ ഔട്ട്പുട്ട്',
+        qty: 1,
+        unitPrice: rates.resolution4kAddon,
+        totalPrice: rates.resolution4kAddon,
+        deletable: true,
+      });
+    }
 
-  if (deliverables.fullLengthVideo) {
-    deliverablesTotal += rates.fullLengthVideo;
-    items.push({
-      id: 'full_video',
-      category: 'video',
-      title: 'Full Length Traditional Edited Wedding Film',
-      titleMl: 'ഫുൾ ലെങ്ത് ട്രഡീഷണൽ എഡിറ്റഡ് വീഡിയോ',
-      qty: 1,
-      unitPrice: rates.fullLengthVideo,
-      totalPrice: rates.fullLengthVideo,
-      deletable: true,
-    });
-  }
+    // Full Length Video Editing - Scales dynamically based on camera/videographer count!
+    if (deliverables.fullLengthVideo) {
+      const cameraCount = Math.max(1, maxVideographersPerEvent);
+      const fullVideoCost = cameraCount * rates.fullLengthVideo;
+      deliverablesTotal += fullVideoCost;
+      items.push({
+        id: 'full_video',
+        category: 'video',
+        title: cameraCount > 1
+          ? `Full Length Traditional Edited Wedding Film (${cameraCount} Camera Multicam Edit)`
+          : 'Full Length Traditional Edited Wedding Film (Single Camera Edit)',
+        titleMl: cameraCount > 1
+          ? `ഫുൾ ലെങ്ത് ട്രഡീഷണൽ എഡിറ്റഡ് വീഡിയോ (${cameraCount} ക്യാമറ മൾട്ടികാം എഡിറ്റ്)`
+          : 'ഫുൾ ലെങ്ത് ട്രഡീഷണൽ എഡിറ്റഡ് വീഡിയോ (സിംഗിൾ ക്യാമറ)',
+        qty: cameraCount,
+        unitPrice: rates.fullLengthVideo,
+        totalPrice: fullVideoCost,
+        deletable: true,
+      });
+    }
 
-  if (deliverables.highlightVideo) {
-    deliverablesTotal += rates.highlightVideo;
-    items.push({
-      id: 'highlight_video',
-      category: 'video',
-      title: 'Cinematic 3-5 Min Wedding Highlight Reel',
-      titleMl: 'സിനിമാറ്റിക് വെഡ്ഡിംഗ് ഹൈലൈറ്റ് വീഡിയോ (3-5 മിനിറ്റ്)',
-      qty: 1,
-      unitPrice: rates.highlightVideo,
-      totalPrice: rates.highlightVideo,
-      deletable: true,
-    });
-  }
+    if (deliverables.highlightVideo) {
+      deliverablesTotal += rates.highlightVideo;
+      items.push({
+        id: 'highlight_video',
+        category: 'video',
+        title: 'Cinematic 3-5 Min Wedding Highlight Reel',
+        titleMl: 'സിനിമാറ്റിക് വെഡ്ഡിംഗ് ഹൈലൈറ്റ് വീഡിയോ (3-5 മിനിറ്റ്)',
+        qty: 1,
+        unitPrice: rates.highlightVideo,
+        totalPrice: rates.highlightVideo,
+        deletable: true,
+      });
+    }
 
-  if (deliverables.teaserVideo) {
-    deliverablesTotal += rates.teaserVideo;
-    items.push({
-      id: 'teaser_video',
-      category: 'video',
-      title: 'Cinematic 1-2 Min Wedding Teaser Promo',
-      titleMl: 'സിനിമാറ്റിക് വെഡ്ഡിംഗ് ടീസർ വീഡിയോ (1-2 മിനിറ്റ്)',
-      qty: 1,
-      unitPrice: rates.teaserVideo,
-      totalPrice: rates.teaserVideo,
-      deletable: true,
-    });
-  }
+    if (deliverables.teaserVideo) {
+      deliverablesTotal += rates.teaserVideo;
+      items.push({
+        id: 'teaser_video',
+        category: 'video',
+        title: 'Cinematic 1-2 Min Wedding Teaser Promo',
+        titleMl: 'സിനിമാറ്റിക് വെഡ്ഡിംഗ് ടീസർ വീഡിയോ (1-2 മിനിറ്റ്)',
+        qty: 1,
+        unitPrice: rates.teaserVideo,
+        totalPrice: rates.teaserVideo,
+        deletable: true,
+      });
+    }
 
-  if (deliverables.reelsCount > 0) {
-    const cost = deliverables.reelsCount * rates.reelRate;
-    deliverablesTotal += cost;
-    items.push({
-      id: 'reels',
-      category: 'video',
-      title: `Social Media & Instagram Viral Reels (${deliverables.reelsCount})`,
-      titleMl: `ഇൻസ്റ്റാഗ്രാം / സോഷ്യൽ മീഡിയ റീൽസ് (${deliverables.reelsCount} എണ്ണം)`,
-      qty: deliverables.reelsCount,
-      unitPrice: rates.reelRate,
-      totalPrice: cost,
-      deletable: true,
-    });
+    if (deliverables.reelsCount > 0) {
+      const cost = deliverables.reelsCount * rates.reelRate;
+      deliverablesTotal += cost;
+      items.push({
+        id: 'reels',
+        category: 'video',
+        title: `Social Media & Instagram Viral Reels (${deliverables.reelsCount})`,
+        titleMl: `ഇൻസ്റ്റാഗ്രാം / സോഷ്യൽ മീഡിയ റീൽസ് (${deliverables.reelsCount} എണ്ണം)`,
+        qty: deliverables.reelsCount,
+        unitPrice: rates.reelRate,
+        totalPrice: cost,
+        deletable: true,
+      });
+    }
   }
 
   // Color Graded Photos (Requirement 2)
@@ -670,6 +696,8 @@ export function calculateCustomQuote(
     packageDiscount: validDiscount,
     activePackageTitle,
     activePackageTitleMl,
+    totalVideographers,
+    maxVideographersPerEvent,
   };
 }
 

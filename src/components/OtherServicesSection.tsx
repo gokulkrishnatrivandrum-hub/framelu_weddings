@@ -37,7 +37,7 @@ interface OtherServicesSectionProps {
 }
 
 export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
-  language = 'ml',
+  language = 'en',
   studioContact = { whatsapp: '916238747722' } as StudioContactConfig,
   packages = DEFAULT_OTHER_SERVICES,
   categories = DEFAULT_SERVICE_CATEGORIES,
@@ -413,9 +413,11 @@ export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
                       <h3 className="text-lg font-black text-stone-900 leading-snug">
                         {isMl ? pkg.titleMl : pkg.title}
                       </h3>
-                      <p className="text-xs font-semibold text-amber-700 mt-0.5 mb-2">
-                        {isMl ? pkg.title : pkg.titleMl}
-                      </p>
+                      {isMl && pkg.title && (
+                        <p className="text-xs font-semibold text-amber-700 mt-0.5 mb-2">
+                          {pkg.title}
+                        </p>
+                      )}
                       <p className="text-xs text-stone-600 line-clamp-2 leading-relaxed mb-4">
                         {pkg.description}
                       </p>
@@ -451,9 +453,8 @@ export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
 
                             <input
                               type="number"
-                              min="10"
-                              max="10000"
-                              step="25"
+                              min="1"
+                              step="any"
                               value={selected ? currentGuests : guestCount}
                               onChange={(e) => {
                                 const val = Math.max(1, Number(e.target.value) || 1);
@@ -515,9 +516,8 @@ export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
 
                             <input
                               type="number"
-                              min="10"
-                              max="10000"
-                              step="50"
+                              min="1"
+                              step="any"
                               value={selected ? currentCards : cardCount}
                               onChange={(e) => {
                                 const val = Math.max(1, Number(e.target.value) || 1);
@@ -660,9 +660,11 @@ export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
             <h3 className="text-xl sm:text-2xl font-black text-stone-900">
               {isMl ? activeModalPackage.titleMl : activeModalPackage.title}
             </h3>
-            <p className="text-xs font-bold text-amber-700 mb-4">
-              {isMl ? activeModalPackage.title : activeModalPackage.titleMl}
-            </p>
+            {isMl && activeModalPackage.title && (
+              <p className="text-xs font-bold text-amber-700 mb-4">
+                {activeModalPackage.title}
+              </p>
+            )}
 
             {/* Demo Image Showcase */}
             <div className="h-56 sm:h-64 w-full rounded-2xl overflow-hidden mb-5 border border-stone-200 shadow-inner relative">
@@ -695,9 +697,8 @@ export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
                   </button>
                   <input
                     type="number"
-                    min="10"
-                    max="10000"
-                    step="25"
+                    min="1"
+                    step="any"
                     value={guestCount}
                     onChange={(e) => setGuestCount(Math.max(1, Number(e.target.value) || 1))}
                     className="flex-1 text-center font-black text-base py-2 rounded-xl border border-amber-300 bg-white"
@@ -734,9 +735,8 @@ export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
                   </button>
                   <input
                     type="number"
-                    min="10"
-                    max="10000"
-                    step="50"
+                    min="1"
+                    step="any"
                     value={cardCount}
                     onChange={(e) => setCardCount(Math.max(1, Number(e.target.value) || 1))}
                     className="flex-1 text-center font-black text-base py-2 rounded-xl border border-amber-300 bg-white"
@@ -854,16 +854,17 @@ export const OtherServicesSection: React.FC<OtherServicesSectionProps> = ({
         <button
           type="button"
           onClick={() => {
-            if (onBackToDeliverables) onBackToDeliverables();
-            else {
-              const el = document.getElementById('deliverables-customizer-section');
+            if (onBackToDeliverables) {
+              onBackToDeliverables();
+            } else {
+              const el = document.getElementById('deliverables-customizer-section') || document.getElementById('wedding-customizer-section');
               if (el) el.scrollIntoView({ behavior: 'smooth' });
             }
           }}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white hover:bg-stone-100 border border-stone-200 text-stone-700 font-bold text-xs sm:text-sm shadow-2xs transition"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white hover:bg-stone-100 border border-stone-200 text-stone-700 font-bold text-xs sm:text-sm shadow-2xs transition cursor-pointer active:scale-98"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>{isMl ? '← ആൽബം & ഡെലിവറബിൾസ് പരിശോധിക്കുക' : '← Back to Deliverables'}</span>
+          <span>{isMl ? 'ആൽബം & ഡെലിവറബിൾസ് പരിശോധിക്കുക' : 'Back to Deliverables'}</span>
         </button>
 
         <button

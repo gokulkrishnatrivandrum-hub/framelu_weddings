@@ -66,7 +66,44 @@ export interface DeliverablesConfig {
   customPrintCounts?: Record<string, number>;
 }
 
+export interface AirlineReservation {
+  id: string;
+  airlineName: string; // e.g. "Air India Express", "IndiGo", "Emirates", "Air Arabia"
+  flightNumber: string; // e.g. "IX 474", "6E 1402"
+  tripType: 'one_way' | 'round_trip';
+  departureCity: string; // e.g. "Dubai (DXB)", "Bangalore (BLR)", "Doha (DOH)"
+  arrivalCity: string; // e.g. "Kochi (COK)", "Trivandrum (TRV)", "Calicut (CCJ)"
+  departureDate: string; // e.g. "2026-12-15"
+  departureTime?: string; // e.g. "14:30"
+  returnFlightNumber?: string;
+  returnDepartureDate?: string;
+  returnDepartureTime?: string;
+  pnrNumber: string; // Booking reference e.g. "PNR-78219"
+  passengerCount: number;
+  passengerNames: string[];
+  cabinClass: 'economy' | 'business' | 'first';
+  airportTransferRequired: boolean;
+  cabPickupLocation?: string;
+  status: 'Confirmed' | 'Ticket Issued' | 'Pending' | 'Cancelled';
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface CustomerAccessRequest {
+  id: string;
+  title: string;
+  titleMl: string;
+  type: 'quotation_access' | 'extra_package_request' | 'airline_booking_assistance' | 'date_change' | 'general';
+  requestedAt: string;
+  status: 'Sent' | 'Under Review' | 'Approved' | 'Action Needed';
+  notes?: string;
+}
+
 export interface CustomerUser {
+  id?: string;
+  userId?: string;
+  username?: string;
+  password?: string;
   name: string;
   phone: string;
   email: string;
@@ -75,6 +112,8 @@ export interface CustomerUser {
   registeredAt?: string;
   verified?: boolean;
   verificationMethod?: 'phone' | 'email';
+  airlineReservations?: AirlineReservation[];
+  accessRequests?: CustomerAccessRequest[];
 }
 
 export interface SelectedOtherService {
@@ -88,6 +127,15 @@ export interface SelectedOtherService {
   guestCount?: number;
   cardCount?: number;
   unitPrice?: number;
+  date?: string;
+  venue?: string;
+  photoshootType?: PhotoshootType;
+  sessionHours?: number;
+  locationType?: string;
+  photographers?: number;
+  videographers?: number;
+  reelsCount?: number;
+  drone?: boolean;
 }
 
 export interface CustomerLead {
@@ -101,7 +149,9 @@ export interface CustomerLead {
   venueLocation?: string;
   notes?: string;
   createdAt?: string;
-  status?: 'New' | 'Contacted' | 'Quoted' | 'Booked' | 'Completed';
+  lastEditedAt?: string;
+  revisionsCount?: number;
+  status?: 'New' | 'Contacted' | 'Quoted' | 'Booked' | 'Completed' | 'Access Sent' | 'Re-submitted' | 'Draft' | 'Confirmed' | 'Under Review' | 'Sent';
   totalPrice?: number;
   taxAmount?: number;
   grandTotal?: number;
@@ -110,14 +160,24 @@ export interface CustomerLead {
   brideEvents?: Record<EventId, EventCrewConfig>;
   deliverables?: DeliverablesConfig;
   selectedServices?: SelectedOtherService[];
+  airlineReservations?: AirlineReservation[];
+  accessRequests?: CustomerAccessRequest[];
   couponCode?: string;
   discountPercentage?: number;
   discountAmount?: number;
   grandTotalAfterDiscount?: number;
   studioBranding?: StudioUser;
+  userEmail?: string;
+  createdByEmail?: string;
+  studioEmail?: string;
+  userId?: string;
+  userPhone?: string;
+  createdByUserId?: string;
+  createdByPhone?: string;
+  createdByRole?: 'studio' | 'customer';
   source?: 'studio' | 'customer';
   createdBy?: 'studio' | 'customer';
-  leadType?: 'wedding' | 'standalone_photoshoot';
+  leadType?: 'wedding' | 'standalone_photoshoot' | 'other_services';
   photoshootType?: string;
   photoshootDetails?: {
     type?: string;
@@ -409,3 +469,17 @@ export interface StudioUser {
   verified?: boolean;
   verificationMethod?: 'phone' | 'email';
 }
+
+export interface AppUserSession {
+  role: 'customer' | 'studio';
+  name: string;
+  userId: string;
+  phone: string;
+  email?: string;
+  studioName?: string;
+  address?: string;
+  place?: string;
+  photoURL?: string;
+  loggedInAt?: string;
+}
+

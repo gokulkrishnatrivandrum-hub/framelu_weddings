@@ -30,6 +30,8 @@ interface DeliverablesCustomizerProps {
   customPrintItems?: CustomPrintItem[];
   language?: 'en' | 'ml';
   onNavigateToOtherServices?: () => void;
+  totalVideographers?: number;
+  maxVideographersPerEvent?: number;
 }
 
 export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
@@ -39,8 +41,13 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
   customPrintItems = DEFAULT_CUSTOM_PRINTS,
   language = 'en',
   onNavigateToOtherServices,
+  totalVideographers = 0,
+  maxVideographersPerEvent = 0,
 }) => {
   const isMl = language === 'ml';
+  const hasVideographers = totalVideographers > 0;
+  const cameraCount = Math.max(1, maxVideographersPerEvent || 1);
+  const fullVideoCost = cameraCount * rates.fullLengthVideo;
 
   const updateField = <K extends keyof DeliverablesConfig>(
     field: K,
@@ -57,7 +64,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
       {/* Section Header */}
       <div className="mb-6 pb-6 border-b border-stone-200">
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-rosewood-100 text-rosewood-800 mb-2">
-          {isMl ? 'ഘട്ടം 3 • Step 3' : 'Step 3'}
+          {isMl ? 'ഘട്ടം 3' : 'Step 3 • Deliverables'}
         </span>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
           {isMl ? 'ഔട്ട്പുട്ട് ഡെലിവറബിൾസ് & പ്രിന്റഡ് മെറ്റീരിയൽസ്' : 'Output Deliverables & Printed Materials'}
@@ -75,139 +82,168 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
           <div className="flex items-center gap-2 mb-3">
             <Film className="w-5 h-5 text-amber-600" />
             <h3 className="text-lg font-bold text-stone-900">
-              1. {isMl ? 'വീഡിയോ ക്വാളിറ്റിയും ഔട്ട്പുട്ടുകളും (Video Production)' : 'Video Production & Resolution'}
+              1. {isMl ? 'വീഡിയോ ക്വാളിറ്റിയും ഔട്ട്പുട്ടുകളും' : 'Video Production & Resolution'}
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {/* 4K vs Full HD */}
-            <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/50">
-              <label className="text-xs font-bold uppercase tracking-wider text-stone-500 block mb-2">
-                {isMl ? 'വീഡിയോ റെസല്യൂഷൻ (Video Resolution)' : 'Video Resolution Master Output'}
-              </label>
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => updateField('videoQuality', '4k')}
-                  className={`p-3.5 rounded-xl border text-left font-bold text-sm transition flex items-center justify-between ${
-                    deliverables.videoQuality === '4k'
-                      ? 'border-amber-600 bg-amber-50 text-amber-900 shadow-xs ring-1 ring-amber-400'
-                      : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'
-                  }`}
-                >
-                  <div>
-                    <span className="block text-sm sm:text-base font-black">4K Ultra HD</span>
-                    <span className="text-[10px] text-stone-500 font-medium block">
-                      {isMl ? 'സിനിമാറ്റിക് ക്ലാരിറ്റി' : 'Cinematic 4K Master'}
-                    </span>
-                    <span className="text-xs font-black text-amber-700 block mt-1">
-                      +₹{rates.resolution4kAddon.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  {deliverables.videoQuality === '4k' && (
-                    <Check className="w-4 h-4 text-amber-600 shrink-0" />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => updateField('videoQuality', 'hd')}
-                  className={`p-3.5 rounded-xl border text-left font-bold text-sm transition flex items-center justify-between ${
-                    deliverables.videoQuality === 'hd'
-                      ? 'border-amber-600 bg-amber-50 text-amber-900 shadow-xs ring-1 ring-amber-400'
-                      : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'
-                  }`}
-                >
-                  <div>
-                    <span className="block text-sm sm:text-base font-black">Full HD (1080p)</span>
-                    <span className="text-[10px] text-stone-500 font-medium block">
-                      {isMl ? 'സ്റ്റാൻഡേർഡ് ക്ലാരിറ്റി' : 'Standard 1080p Master'}
-                    </span>
-                    <span className="text-xs font-black text-emerald-700 block mt-1">
-                      {isMl ? '✓ ബേസ് പാക്കേജ്' : '✓ Base Included'}
-                    </span>
-                  </div>
-                  {deliverables.videoQuality === 'hd' && <Check className="w-4 h-4 text-amber-600 shrink-0" />}
-                </button>
+          {!hasVideographers ? (
+            <div className="p-5 rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/70 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-200/80 text-amber-900 flex items-center justify-center shrink-0">
+                  <Film className="w-5 h-5 text-amber-800" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-amber-950">
+                    {isMl ? 'ക്രൂവിൽ വീഡിയോഗ്രാഫർമാരെ ചേർത്തിട്ടില്ല' : 'No Videographers Added in Crew'}
+                  </h4>
+                  <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                    {isMl
+                      ? 'വീഡിയോഗ്രാഫർ ക്രൂ ആഡ് ചെയ്യാത്തതിനാൽ വീഡിയോ എഡിറ്റിംഗ്, 4K റെസല്യൂഷൻ, ഹൈലൈറ്റ്, ടീസർ, റീൽസ് എന്നിവയുടെ ചാർജ് ഈടാക്കുന്നതല്ല (₹0). മറ്റ് ഫോട്ടോഗ്രാഫി, ആൽബം, ഫ്രെയിംസ് തുടങ്ങിയവയുടെ തുക മാത്രമേ ഉൾപ്പെടുത്തൂ.'
+                      : 'Since no videographers are selected in Step 2, video editing, 4K resolution upgrade, teaser, highlights, and reels are not charged (₹0). Only photography, album, and other services pricing is included.'}
+                  </p>
+                </div>
               </div>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {/* 4K vs Full HD */}
+              <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/50">
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 block mb-2">
+                  {isMl ? 'വീഡിയോ റെസല്യൂഷൻ' : 'Video Resolution Master Output'}
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => updateField('videoQuality', '4k')}
+                    className={`p-3.5 rounded-xl border text-left font-bold text-sm transition flex items-center justify-between ${
+                      deliverables.videoQuality === '4k'
+                        ? 'border-amber-600 bg-amber-50 text-amber-900 shadow-xs ring-1 ring-amber-400'
+                        : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'
+                    }`}
+                  >
+                    <div>
+                      <span className="block text-sm sm:text-base font-black">4K Ultra HD</span>
+                      <span className="text-[10px] text-stone-500 font-medium block">
+                        {isMl ? 'സിനിമാറ്റിക് ക്ലാരിറ്റി' : 'Cinematic 4K Master'}
+                      </span>
+                      <span className="text-xs font-black text-amber-700 block mt-1">
+                        +₹{rates.resolution4kAddon.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    {deliverables.videoQuality === '4k' && (
+                      <Check className="w-4 h-4 text-amber-600 shrink-0" />
+                    )}
+                  </button>
 
-            {/* Video Output Formats */}
-            <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/50 space-y-2.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-stone-500 block mb-1">
-                {isMl ? 'വീഡിയോ തരങ്ങൾ (Video Formats)' : 'Video Formats & Edits'}
-              </label>
-
-              {/* Full Length Video */}
-              <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-50 transition">
-                <div className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={deliverables.fullLengthVideo}
-                    onChange={(e) => updateField('fullLengthVideo', e.target.checked)}
-                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-stone-900 block">
-                      Full Length Traditional Wedding Film
-                    </span>
-                    <span className="text-[10px] text-stone-500">
-                      Complete ritual footage with music & audio sync
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateField('videoQuality', 'hd')}
+                    className={`p-3.5 rounded-xl border text-left font-bold text-sm transition flex items-center justify-between ${
+                      deliverables.videoQuality === 'hd'
+                        ? 'border-amber-600 bg-amber-50 text-amber-900 shadow-xs ring-1 ring-amber-400'
+                        : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50'
+                    }`}
+                  >
+                    <div>
+                      <span className="block text-sm sm:text-base font-black">Full HD (1080p)</span>
+                      <span className="text-[10px] text-stone-500 font-medium block">
+                        {isMl ? 'സ്റ്റാൻഡേർഡ് ക്ലാരിറ്റി' : 'Standard 1080p Master'}
+                      </span>
+                      <span className="text-xs font-black text-emerald-700 block mt-1">
+                        {isMl ? '✓ ബേസ് പാക്കേജ്' : '✓ Base Included'}
+                      </span>
+                    </div>
+                    {deliverables.videoQuality === 'hd' && <Check className="w-4 h-4 text-amber-600 shrink-0" />}
+                  </button>
                 </div>
-                <span className="text-xs font-black text-amber-700">
-                  ₹{rates.fullLengthVideo.toLocaleString('en-IN')}
-                </span>
-              </label>
+              </div>
 
-              {/* Highlight Video */}
-              <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-50 transition">
-                <div className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={deliverables.highlightVideo}
-                    onChange={(e) => updateField('highlightVideo', e.target.checked)}
-                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-stone-900 block">
-                      Cinematic Wedding Highlight (3-5 Mins)
-                    </span>
-                    <span className="text-[10px] text-stone-500">
-                      Signature music montage of best moments
-                    </span>
-                  </div>
-                </div>
-                <span className="text-xs font-black text-amber-700">
-                  ₹{rates.highlightVideo.toLocaleString('en-IN')}
-                </span>
-              </label>
+              {/* Video Output Formats */}
+              <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50/50 space-y-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 block mb-1">
+                  {isMl ? 'വീഡിയോ തരങ്ങൾ (Video Formats)' : 'Video Formats & Edits'}
+                </label>
 
-              {/* Teaser Video */}
-              <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-50 transition">
-                <div className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={deliverables.teaserVideo}
-                    onChange={(e) => updateField('teaserVideo', e.target.checked)}
-                    className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-stone-900 block">
-                      Cinematic Teaser Promo (1-2 Mins)
-                    </span>
-                    <span className="text-[10px] text-stone-500">
-                      Quick social media teaser announcement
-                    </span>
+                {/* Full Length Video */}
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-50 transition">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={deliverables.fullLengthVideo}
+                      onChange={(e) => updateField('fullLengthVideo', e.target.checked)}
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-stone-900 block">
+                        Full Length Traditional Wedding Film {cameraCount > 1 ? `(${cameraCount} Cam Multicam Edit)` : ''}
+                      </span>
+                      <span className="text-[10px] text-stone-500">
+                        {cameraCount > 1
+                          ? `${cameraCount} Videographer Cameras Multi-angle Sync Edit (₹${rates.fullLengthVideo.toLocaleString('en-IN')}/cam)`
+                          : 'Complete ritual footage with music & audio sync'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <span className="text-xs font-black text-amber-700">
-                  ₹{rates.teaserVideo.toLocaleString('en-IN')}
-                </span>
-              </label>
+                  <div className="text-right">
+                    <span className="text-xs font-black text-amber-700 block">
+                      ₹{fullVideoCost.toLocaleString('en-IN')}
+                    </span>
+                    {cameraCount > 1 && (
+                      <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                        {cameraCount}x Cam
+                      </span>
+                    )}
+                  </div>
+                </label>
+
+                {/* Highlight Video */}
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-50 transition">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={deliverables.highlightVideo}
+                      onChange={(e) => updateField('highlightVideo', e.target.checked)}
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-stone-900 block">
+                        Cinematic Wedding Highlight (3-5 Mins)
+                      </span>
+                      <span className="text-[10px] text-stone-500">
+                        Signature music montage of best moments
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-black text-amber-700">
+                    ₹{rates.highlightVideo.toLocaleString('en-IN')}
+                  </span>
+                </label>
+
+                {/* Teaser Video */}
+                <label className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-stone-200 cursor-pointer hover:bg-stone-50 transition">
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={deliverables.teaserVideo}
+                      onChange={(e) => updateField('teaserVideo', e.target.checked)}
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-stone-900 block">
+                        Cinematic Teaser Promo (1-2 Mins)
+                      </span>
+                      <span className="text-[10px] text-stone-500">
+                        Quick social media teaser announcement
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-black text-amber-700">
+                    ₹{rates.teaserVideo.toLocaleString('en-IN')}
+                  </span>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Reels, Media Delivery & Photo Grading - Upgraded Roomy Steppers */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -227,35 +263,45 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
               </div>
 
               <div className="mt-3.5 pt-3 border-t border-stone-100 flex items-center justify-between bg-stone-50 rounded-xl p-1.5 border border-stone-200">
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateField('reelsCount', Math.max(0, deliverables.reelsCount - 1))
-                  }
-                  disabled={deliverables.reelsCount <= 0}
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition ${
-                    deliverables.reelsCount > 0
-                      ? 'bg-white hover:bg-stone-200 text-stone-800 shadow-xs'
-                      : 'bg-stone-200/50 text-stone-300 cursor-not-allowed'
-                  }`}
-                  aria-label="Decrease reels count"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <div className="text-center">
-                  <span className="text-sm font-black text-stone-900 block leading-tight">
-                    {deliverables.reelsCount}
-                  </span>
-                  <span className="text-[9px] font-bold text-stone-400 uppercase">Reels</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => updateField('reelsCount', deliverables.reelsCount + 1)}
-                  className="w-8 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center font-bold shadow-xs transition"
-                  aria-label="Increase reels count"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
+                {!hasVideographers ? (
+                  <div className="w-full text-center py-1">
+                    <span className="text-[10px] font-bold text-stone-400">
+                      {isMl ? 'വീഡിയോഗ്രാഫർ ക്രൂ ഇല്ല (₹0)' : 'Videographer needed (₹0)'}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateField('reelsCount', Math.max(0, deliverables.reelsCount - 1))
+                      }
+                      disabled={deliverables.reelsCount <= 0}
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold transition ${
+                        deliverables.reelsCount > 0
+                          ? 'bg-white hover:bg-stone-200 text-stone-800 shadow-xs'
+                          : 'bg-stone-200/50 text-stone-300 cursor-not-allowed'
+                      }`}
+                      aria-label="Decrease reels count"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="text-center">
+                      <span className="text-sm font-black text-stone-900 block leading-tight">
+                        {deliverables.reelsCount}
+                      </span>
+                      <span className="text-[9px] font-bold text-stone-400 uppercase">Reels</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateField('reelsCount', deliverables.reelsCount + 1)}
+                      className="w-8 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex items-center justify-center font-bold shadow-xs transition"
+                      aria-label="Increase reels count"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -437,7 +483,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
           <div className="flex items-center gap-2 mb-3">
             <BookOpen className="w-5 h-5 text-rosewood-600" />
             <h3 className="text-lg font-bold text-stone-900">
-              2. {isMl ? 'പ്രധാന വെഡ്ഡിംഗ് ആൽബം (Main Wedding Album)' : 'Main Wedding Album Customization'}
+              2. {isMl ? 'പ്രധാന വെഡ്ഡിംഗ് ആൽബം' : 'Main Wedding Album Customization'}
             </h3>
           </div>
 
@@ -484,7 +530,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
             {/* Page Count (Up to 200 Pages) */}
             <div>
               <div className="flex items-center justify-between text-xs font-bold text-stone-700 mb-2">
-                <span>{isMl ? 'പേജ് കൗണ്ട് (Page Count)' : 'Page Count'}</span>
+                <span>{isMl ? 'പേജ് കൗണ്ട്' : 'Page Count'}</span>
                 <span className="text-amber-700 font-extrabold text-sm">{deliverables.mainAlbumSheets} Pages</span>
               </div>
               <div className="flex items-center gap-2 mb-2">
@@ -524,7 +570,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
             {/* Album Cover Selection */}
             <div>
               <label className="text-xs font-bold text-stone-700 block mb-2">
-                {isMl ? 'ആൽബം കവർ (Album Cover)' : 'Album Cover Selection'}
+                {isMl ? 'ആൽബം കവർ' : 'Album Cover Selection'}
               </label>
               {(() => {
                 const currentType = (() => {
@@ -556,22 +602,22 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
                       className="w-full bg-white border border-stone-200 rounded-xl p-2.5 text-xs font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
                       <option value="normal">
-                        {isMl ? 'നോർമൽ (Normal)' : 'Normal Cover'} {rates.albumFinishes?.normal ? `(+₹${rates.albumFinishes.normal.toLocaleString('en-IN')})` : (isMl ? '(ബേസ് ഉൾപ്പെടെ)' : '(Base Included)')}
+                        {isMl ? 'നോർമൽ' : 'Normal Cover'} {rates.albumFinishes?.normal ? `(+₹${rates.albumFinishes.normal.toLocaleString('en-IN')})` : (isMl ? '(ബേസ് ഉൾപ്പെടെ)' : '(Base Included)')}
                       </option>
                       <option value="premium">
-                        {isMl ? 'പ്രീമിയം (Premium)' : 'Premium Cover'} (+₹{(rates.albumFinishes?.premium ?? 1500).toLocaleString('en-IN')})
+                        {isMl ? 'പ്രീമിയം' : 'Premium Cover'} (+₹{(rates.albumFinishes?.premium ?? 1500).toLocaleString('en-IN')})
                       </option>
                       <option value="extra_premium">
-                        {isMl ? 'എക്സ്ട്രാ പ്രീമിയം (Extra Premium)' : 'Extra Premium Cover'} (+₹{(rates.albumFinishes?.extra_premium ?? 2500).toLocaleString('en-IN')})
+                        {isMl ? 'എക്സ്ട്രാ പ്രീമിയം' : 'Extra Premium Cover'} (+₹{(rates.albumFinishes?.extra_premium ?? 2500).toLocaleString('en-IN')})
                       </option>
                       <option value="leather">
-                        {isMl ? 'ലെതർ (Leather)' : 'Leather Cover'} (+₹{(rates.albumFinishes?.leather ?? 3500).toLocaleString('en-IN')})
+                        {isMl ? 'ലെതർ' : 'Leather Cover'} (+₹{(rates.albumFinishes?.leather ?? 3500).toLocaleString('en-IN')})
                       </option>
                       <option value="glass">
-                        {isMl ? 'ഗ്ലാസ് (Glass)' : 'Glass Cover'} (+₹{(rates.albumFinishes?.glass ?? 4500).toLocaleString('en-IN')})
+                        {isMl ? 'ഗ്ലാസ്' : 'Glass Cover'} (+₹{(rates.albumFinishes?.glass ?? 4500).toLocaleString('en-IN')})
                       </option>
                       <option value="full_glass">
-                        {isMl ? 'ഫുൾ ഗ്ലാസ് (Full Glass)' : 'Full Glass Cover'} (+₹{(rates.albumFinishes?.full_glass ?? 6000).toLocaleString('en-IN')})
+                        {isMl ? 'ഫുൾ ഗ്ലാസ്' : 'Full Glass Cover'} (+₹{(rates.albumFinishes?.full_glass ?? 6000).toLocaleString('en-IN')})
                       </option>
                     </select>
                     <p className="text-[11px] text-amber-700 font-bold mt-1.5">
@@ -590,7 +636,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
           <div className="flex items-center gap-2 mb-3">
             <ImageIcon className="w-5 h-5 text-indigo-600" />
             <h3 className="text-lg font-bold text-stone-900">
-              3. {isMl ? 'ഫോട്ടോ ഫ്രെയിമുകൾ - പ്രീസെറ്റ് സൈസുകൾ (Photo Frames)' : 'Preset Photo Frames'}
+              3. {isMl ? 'ഫോട്ടോ ഫ്രെയിമുകൾ - പ്രീസെറ്റ് സൈസുകൾ' : 'Preset Photo Frames'}
             </h3>
           </div>
           <p className="text-xs text-stone-500 mb-4">
@@ -743,7 +789,7 @@ export const DeliverablesCustomizer: React.FC<DeliverablesCustomizerProps> = ({
           <div className="flex items-center gap-2 mb-3">
             <Gift className="w-5 h-5 text-emerald-600" />
             <h3 className="text-lg font-bold text-stone-900">
-              4. {isMl ? 'അഡീഷണൽ പ്രിന്റഡ് പ്രൊഡക്റ്റുകൾ (Print & Merch Add-ons)' : 'Additional Print Keepsakes & Merchandise'}
+              4. {isMl ? 'അഡീഷണൽ പ്രിന്റഡ് പ്രൊഡക്റ്റുകൾ' : 'Additional Print Keepsakes & Merchandise'}
             </h3>
           </div>
           <p className="text-xs text-stone-500 mb-4">

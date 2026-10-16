@@ -25,8 +25,13 @@ import {
   Edit3,
   Tag,
   Gift,
+  Calendar,
+  X,
+  Users,
+  Check,
 } from 'lucide-react';
-import { CouponCode } from '@/types';
+import { CouponCode, SelectedOtherService, OtherServicePackage } from '@/types';
+import { DEFAULT_OTHER_SERVICES } from '@/constants/defaults';
 
 interface LiveStickyPricingProps {
   calculation: CalculationResult;
@@ -35,12 +40,16 @@ interface LiveStickyPricingProps {
   onReset?: () => void;
   onNavigateToOtherServices?: () => void;
   onNavigateToPhotography?: () => void;
+  selectedOtherServices?: SelectedOtherService[];
+  onUpdateOtherService?: (service: SelectedOtherService) => void;
   language?: 'en' | 'ml';
   whatsappNumber?: string;
   coupons?: CouponCode[];
   appliedCoupon?: CouponCode | null;
   onApplyCoupon?: (code: string) => { success: boolean; message: string };
   onRemoveCoupon?: () => void;
+  isLoggedIn?: boolean;
+  onRequireLogin?: () => void;
 }
 
 export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
@@ -50,18 +59,112 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
   onReset,
   onNavigateToOtherServices,
   onNavigateToPhotography,
-  language = 'ml',
+  selectedOtherServices = [],
+  onUpdateOtherService,
+  language = 'en',
   whatsappNumber = '916238747722',
   coupons = [],
   appliedCoupon,
   onApplyCoupon,
   onRemoveCoupon,
+  isLoggedIn = false,
+  onRequireLogin,
 }) => {
   const isMl = language === 'ml';
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
   const [isPhotoExpanded, setIsPhotoExpanded] = useState(true);
   const [couponInput, setCouponInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
+
+  // Add-on / Other Service Editing State
+  const [editingAddon, setEditingAddon] = useState<SelectedOtherService | null>(null);
+  const [addonEditDate, setAddonEditDate] = useState<string>('');
+  const [addonEditPrice, setAddonEditPrice] = useState<number>(0);
+
+  // Photoshoot specific state
+  const [addonEditHours, setAddonEditHours] = useState<number>(3);
+  const [addonEditPhotos, setAddonEditPhotos] = useState<number>(1);
+  const [addonEditVideos, setAddonEditVideos] = useState<number>(0);
+  const [addonEditReels, setAddonEditReels] = useState<number>(0);
+  const [addonEditDrone, setAddonEditDrone] = useState<boolean>(false);
+
+  // Catering (Guests), Invitations (Cards), and Custom Options state
+  const [addonEditGuests, setAddonEditGuests] = useState<number | string>(300);
+  const [addonEditCards, setAddonEditCards] = useState<number | string>(300);
+  const [addonEditSelectedOptions, setAddonEditSelectedOptions] = useState<string[]>([]);
+
+  // Find the package definition from catalog
+  const editingPackage = editingAddon
+    ? DEFAULT_OTHER_SERVICES.find((p) => p.id === editingAddon.packageId)
+    : undefined;
+  const isPhotoshoot =
+    editingAddon?.category === 'photoshoot' ||
+    editingAddon?.packageId.startsWith('photoshoot') ||
+    !!editingAddon?.photoshootType;
+  const isFood =
+    editingAddon?.category === 'food_catering' || editingPackage?.category === 'food_catering';
+  const isCards =
+    editingAddon?.category === 'invitations' || editingPackage?.category === 'invitations';
+
+  const calculateRecalculatedPrice = (
+    pkg: OtherServicePackage | undefined,
+    guests: number,
+    cards: number,
+    optIds: string[]
+  ) => {
+    if (!pkg) return Number(addonEditPrice) || 0;
+    let base = 0;
+    if (pkg.pricingType === 'per_guest') {
+      const rate = pkg.pricePerUnit || pkg.price;
+      base = rate * Math.max(1, guests);
+    } else if (pkg.pricingType === 'per_card') {
+      const rate = pkg.pricePerUnit || pkg.price;
+      base = rate * Math.max(1, cards);
+    } else {
+      base = pkg.price;
+    }
+
+    if (pkg.customOptions) {
+      for (const opt of pkg.customOptions) {
+        if (optIds.includes(opt.id) && opt.price) {
+          base += opt.price;
+        }
+      }
+    }
+    return base;
+  };
+
+  const handleGuestsChange = (newCount: number) => {
+    const val = Math.max(1, newCount);
+    setAddonEditGuests(val);
+    if (editingPackage && editingPackage.pricingType === 'per_guest') {
+      setAddonEditPrice(
+        calculateRecalculatedPrice(editingPackage, val, Number(addonEditCards) || 0, addonEditSelectedOptions)
+      );
+    }
+  };
+
+  const handleCardsChange = (newCount: number) => {
+    const val = Math.max(1, newCount);
+    setAddonEditCards(val);
+    if (editingPackage && editingPackage.pricingType === 'per_card') {
+      setAddonEditPrice(
+        calculateRecalculatedPrice(editingPackage, Number(addonEditGuests) || 0, val, addonEditSelectedOptions)
+      );
+    }
+  };
+
+  const handleToggleOption = (optId: string) => {
+    const newOpts = addonEditSelectedOptions.includes(optId)
+      ? addonEditSelectedOptions.filter((id) => id !== optId)
+      : [...addonEditSelectedOptions, optId];
+    setAddonEditSelectedOptions(newOpts);
+    if (editingPackage) {
+      setAddonEditPrice(
+        calculateRecalculatedPrice(editingPackage, Number(addonEditGuests) || 0, Number(addonEditCards) || 0, newOpts)
+      );
+    }
+  };
 
   // Discount computation
   const baseSubtotal = calculation.totalPrice || 0;
@@ -106,6 +209,131 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
     }
   };
 
+  const handleGetQuotationCtaClick = () => {
+    if (!isLoggedIn && onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
+    onOpenLeadModal();
+  };
+
+  const handleOpenEditAddon = (item: BreakdownItem) => {
+    if (!isLoggedIn && onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
+    const pkgId = item.id.replace('other_service_', '');
+    const pkgDef = DEFAULT_OTHER_SERVICES.find((p) => p.id === pkgId);
+    const found = selectedOtherServices.find((s) => s.packageId === pkgId) || {
+      packageId: pkgId,
+      category: pkgDef?.category || 'general',
+      title: item.title,
+      titleMl: item.titleMl,
+      price: item.totalPrice,
+      unitPrice: item.unitPrice,
+    };
+
+    setEditingAddon(found);
+    setAddonEditDate(found.date || '');
+    setAddonEditPrice(found.price || item.totalPrice);
+
+    // Food guests
+    const initialGuests = found.guestCount || pkgDef?.baseGuestCount || 300;
+    setAddonEditGuests(initialGuests);
+
+    // Cards
+    const initialCards = found.cardCount || pkgDef?.baseCardCount || 300;
+    setAddonEditCards(initialCards);
+
+    // Photoshoot
+    setAddonEditHours(found.sessionHours || 3);
+    setAddonEditPhotos(found.photographers || 1);
+    setAddonEditVideos(found.videographers || 0);
+    setAddonEditReels(found.reelsCount || 0);
+    setAddonEditDrone(!!found.drone);
+
+    // Custom options
+    const activeOpts: string[] = [];
+    if (pkgDef?.customOptions && found.customSelections) {
+      for (const opt of pkgDef.customOptions) {
+        const isMatched = found.customSelections.some(
+          (sel) =>
+            sel === opt.id ||
+            sel.toLowerCase() === opt.label.toLowerCase() ||
+            (opt.labelMl && sel.includes(opt.labelMl)) ||
+            sel.includes(opt.label)
+        );
+        if (isMatched) {
+          activeOpts.push(opt.id);
+        }
+      }
+    }
+    setAddonEditSelectedOptions(activeOpts);
+  };
+
+  const handleSaveAddon = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAddon || !onUpdateOtherService) return;
+    const pkgDef = DEFAULT_OTHER_SERVICES.find((p) => p.id === editingAddon.packageId);
+    const category = editingAddon.category || pkgDef?.category || 'general';
+    const isPhotoshootItem =
+      category === 'photoshoot' ||
+      editingAddon.packageId.startsWith('photoshoot') ||
+      !!editingAddon.photoshootType;
+    const isFoodItem = category === 'food_catering' || pkgDef?.category === 'food_catering';
+    const isCardsItem = category === 'invitations' || pkgDef?.category === 'invitations';
+
+    let customSelections: string[] = [];
+
+    if (isPhotoshootItem) {
+      customSelections = [
+        `${addonEditHours} ${isMl ? 'മണിക്കൂർ ഷൂട്ട്' : 'Hours'}`,
+        `${addonEditPhotos} ${isMl ? 'ഫോട്ടോഗ്രാഫർ' : 'Photo'}`,
+        addonEditVideos > 0 ? `${addonEditVideos} ${isMl ? 'വീഡിയോഗ്രാഫർ' : 'Video'}` : '',
+        addonEditReels > 0 ? `${addonEditReels} ${isMl ? 'റീൽസ്' : 'Reels'}` : '',
+        addonEditDrone ? (isMl ? 'ഡ്രോൺ' : 'Drone') : '',
+        addonEditDate ? `${isMl ? 'തീയതി' : 'Date'}: ${addonEditDate}` : '',
+      ].filter(Boolean);
+    } else {
+      // Non-photoshoot (Catering, Decor, Makeup, Invitations, Cars, Honeymoon, etc.)
+      const optLabels = (pkgDef?.customOptions || [])
+        .filter((o) => addonEditSelectedOptions.includes(o.id))
+        .map((o) => (isMl && o.labelMl ? o.labelMl : o.label));
+
+      const guestsNum = isFoodItem ? Math.max(1, Number(addonEditGuests) || 1) : undefined;
+      const cardsNum = isCardsItem ? Math.max(1, Number(addonEditCards) || 1) : undefined;
+
+      customSelections = [
+        isFoodItem && guestsNum ? `${guestsNum} ${isMl ? 'അതിഥികൾ (Guests)' : 'Guests'}` : '',
+        isCardsItem && cardsNum ? `${cardsNum} ${isMl ? 'കാർഡുകൾ (Cards)' : 'Cards'}` : '',
+        ...optLabels,
+        addonEditDate ? `${isMl ? 'തീയതി' : 'Date'}: ${addonEditDate}` : '',
+      ].filter(Boolean);
+    }
+
+    const finalGuests = isFoodItem ? Math.max(1, Number(addonEditGuests) || 1) : undefined;
+    const finalCards = isCardsItem ? Math.max(1, Number(addonEditCards) || 1) : undefined;
+    const finalPrice = Math.max(0, Number(addonEditPrice) || 0);
+
+    const updated: SelectedOtherService = {
+      ...editingAddon,
+      category,
+      date: addonEditDate,
+      price: finalPrice,
+      customSelections,
+      guestCount: finalGuests,
+      cardCount: finalCards,
+      sessionHours: isPhotoshootItem ? addonEditHours : undefined,
+      photographers: isPhotoshootItem ? addonEditPhotos : undefined,
+      videographers: isPhotoshootItem ? addonEditVideos : undefined,
+      reelsCount: isPhotoshootItem ? addonEditReels : undefined,
+      drone: isPhotoshootItem ? addonEditDrone : undefined,
+    };
+
+    onUpdateOtherService(updated);
+    setEditingAddon(null);
+  };
+
   return (
     <>
       {/* DESKTOP STICKY SIDEBAR (Taller, spacious, luxury aesthetic - Requirement 3 & 4) */}
@@ -116,7 +344,7 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
             <div className="flex items-center justify-between pb-4 border-b border-stone-200/80">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-100/80 border border-amber-300 px-2.5 py-0.5 rounded-full inline-block">
-                  Live Estimate • തത്സമയ തുക
+                  {isMl ? 'തത്സമയ തുക' : 'Live Estimate'}
                 </span>
                 <h3 className="text-xl font-black text-stone-900 mt-1">
                   {isMl ? 'പാക്കേജ് എസ്റ്റിമേറ്റ്' : 'Package Estimate'}
@@ -401,6 +629,7 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
               {/* CARD 2...N: OTHER SELECTED SERVICES BREAKDOWN */}
               {otherServiceItems.map((item) => {
                 const pkgId = item.id.replace('other_service_', '');
+                const matchedService = selectedOtherServices.find((s) => s.packageId === pkgId);
                 return (
                   <div
                     key={item.id}
@@ -414,16 +643,34 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
                         <p className="font-black text-xs text-stone-900 truncate" title={isMl ? item.titleMl : item.title}>
                           {isMl ? item.titleMl : item.title}
                         </p>
-                        <p className="text-[10px] text-amber-800 font-semibold">
-                          {item.qty > 1 ? `${item.qty} Units x ₹${item.unitPrice.toLocaleString('en-IN')}` : isMl ? 'പാക്കേജ് ആഡ്-ഓൺ' : 'Service Add-on'}
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] text-amber-800 font-semibold">
+                            {item.qty > 1 ? `${item.qty} Units x ₹${item.unitPrice.toLocaleString('en-IN')}` : isMl ? 'പാക്കേജ് ആഡ്-ഓൺ' : 'Service Add-on'}
+                          </span>
+                          {matchedService?.date && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-950 rounded flex items-center gap-0.5">
+                              <Calendar className="w-2.5 h-2.5 text-amber-700" />
+                              <span>{matchedService.date}</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs font-black text-stone-900">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs font-black text-stone-900 mr-1">
                         ₹{item.totalPrice.toLocaleString('en-IN')}
                       </span>
+                      {onUpdateOtherService && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditAddon(item)}
+                          className="text-amber-800 hover:text-amber-950 p-1 hover:bg-amber-100 rounded-lg transition"
+                          title={isMl ? 'തീയതിയും വിവരങ്ങളും മാറ്റുക' : 'Edit shoot date & options'}
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => onRemoveItem(item)}
@@ -443,7 +690,7 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
           <div className="mt-6 pt-4 border-t border-stone-200/80 space-y-2.5">
             <button
               type="button"
-              onClick={onOpenLeadModal}
+              onClick={handleGetQuotationCtaClick}
               disabled={calculation.totalPrice === 0}
               className="w-full bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 disabled:opacity-50 text-white font-black py-3.5 px-4 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-xs sm:text-sm active:scale-98 cursor-pointer"
             >
@@ -523,31 +770,52 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
             </div>
 
             {/* Other Services */}
-            {otherServiceItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between p-2.5 bg-white rounded-2xl border border-stone-200 text-xs"
-              >
-                <div className="flex-1 mr-2 min-w-0">
-                  <p className="font-bold text-stone-800 truncate">{isMl ? item.titleMl : item.title}</p>
-                  <p className="text-[10px] text-stone-500">
-                    {item.qty} Qty x ₹{item.unitPrice.toLocaleString('en-IN')}
-                  </p>
+            {otherServiceItems.map((item) => {
+              const pkgId = item.id.replace('other_service_', '');
+              const matchedService = selectedOtherServices.find((s) => s.packageId === pkgId);
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-2.5 bg-white rounded-2xl border border-stone-200 text-xs"
+                >
+                  <div className="flex-1 mr-2 min-w-0">
+                    <p className="font-bold text-stone-800 truncate">{isMl ? item.titleMl : item.title}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-stone-500">
+                        {item.qty} Qty x ₹{item.unitPrice.toLocaleString('en-IN')}
+                      </span>
+                      {matchedService?.date && (
+                        <span className="text-[9px] font-bold px-1 bg-amber-100 text-amber-900 rounded">
+                          📅 {matchedService.date}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-bold text-stone-900">
+                      ₹{item.totalPrice.toLocaleString('en-IN')}
+                    </span>
+                    {onUpdateOtherService && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditAddon(item)}
+                        className="text-amber-800 p-1 hover:bg-amber-100 rounded-lg"
+                        title="Edit date and details"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onRemoveItem(item)}
+                      className="text-rose-500 p-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="font-bold text-stone-900">
-                    ₹{item.totalPrice.toLocaleString('en-IN')}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveItem(item)}
-                    className="text-rose-500 p-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -577,7 +845,7 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
 
           <button
             type="button"
-            onClick={onOpenLeadModal}
+            onClick={handleGetQuotationCtaClick}
             disabled={calculation.totalPrice === 0}
             className="bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 disabled:opacity-50 text-white font-black py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-2 text-xs"
           >
@@ -586,6 +854,411 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Edit Service / Package Modal (Category-Aware: Photography only for photoshoots, Food/Decor/Makeup custom options for other services) */}
+      {editingAddon && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative border border-stone-200 animate-fade-in max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setEditingAddon(null)}
+              className="absolute top-5 right-5 p-1 rounded-full text-stone-400 hover:text-stone-700"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-4 pb-3 border-b border-stone-200">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                {isPhotoshoot ? (
+                  <Camera className="w-5 h-5" />
+                ) : isFood ? (
+                  <UtensilsCrossed className="w-5 h-5" />
+                ) : isCards ? (
+                  <Mail className="w-5 h-5" />
+                ) : editingAddon.category === 'luxury_cars' ? (
+                  <Car className="w-5 h-5" />
+                ) : editingAddon.category === 'event_planning' ? (
+                  <Palette className="w-5 h-5" />
+                ) : editingAddon.category === 'honeymoon' ? (
+                  <Plane className="w-5 h-5" />
+                ) : (
+                  <Sparkles className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-base font-black text-stone-900 leading-snug">
+                  {isMl ? editingAddon.titleMl || editingAddon.title : editingAddon.title}
+                </h3>
+                <p className="text-[11px] text-stone-500">
+                  {isPhotoshoot
+                    ? isMl
+                      ? 'ഷൂട്ട് തീയതിയും ക്രമീകരണങ്ങളും തിരുത്തുക'
+                      : 'Edit shoot date and package configuration'
+                    : isMl
+                    ? 'തീയതിയും സർവീസ് വിവരങ്ങളും തിരുത്തുക'
+                    : 'Edit service date and package options'}
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveAddon} noValidate className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-stone-700 block mb-1">
+                  {isPhotoshoot
+                    ? isMl
+                      ? 'ഷൂട്ട് തീയതി (Shoot Date)'
+                      : 'Shoot Date'
+                    : isMl
+                    ? 'സർവീസ് / ഇവന്റ് തീയതി (Service Date)'
+                    : 'Service Date'}
+                </label>
+                <input
+                  type="date"
+                  value={addonEditDate}
+                  onChange={(e) => setAddonEditDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                <p className="text-[10px] text-amber-800 mt-1">
+                  {isMl
+                    ? 'ഈ തീയതി ഡാഷ്‌ബോർഡിലെ ഇവന്റ് കലണ്ടറിൽ കാണിക്കും'
+                    : 'This date will reflect on the Dashboard Event Calendar'}
+                </p>
+              </div>
+
+              {/* 1. PHOTOSHOOT CREW CONTROLS (Only rendered when category is photoshoot) */}
+              {isPhotoshoot && (
+                <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-stone-700">
+                      {isMl ? 'മണിക്കൂറുകൾ (Hours)' : 'Session Hours'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditHours(Math.max(1, addonEditHours - 1))}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold w-4 text-center">{addonEditHours}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditHours(addonEditHours + 1)}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-stone-700">
+                      {isMl ? 'ഫോട്ടോഗ്രാഫർമാർ' : 'Photographers'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditPhotos(Math.max(1, addonEditPhotos - 1))}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold w-4 text-center">{addonEditPhotos}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditPhotos(addonEditPhotos + 1)}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-stone-700">
+                      {isMl ? 'വീഡിയോഗ്രാഫർമാർ' : 'Videographers'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditVideos(Math.max(0, addonEditVideos - 1))}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold w-4 text-center">{addonEditVideos}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditVideos(addonEditVideos + 1)}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-stone-700">
+                      {isMl ? 'ഇൻസ്റ്റാഗ്രാം റീൽസ്' : 'Reels Count'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditReels(Math.max(0, addonEditReels - 1))}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="font-bold w-4 text-center">{addonEditReels}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAddonEditReels(addonEditReels + 1)}
+                        className="w-7 h-7 rounded-lg bg-white border border-stone-300 font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center justify-between text-xs cursor-pointer pt-1 border-t border-stone-200">
+                    <span className="font-bold text-stone-700">
+                      {isMl ? '4K ഡ്രോൺ ഷൂട്ട്' : '4K Drone Aerial'}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={addonEditDrone}
+                      onChange={(e) => setAddonEditDrone(e.target.checked)}
+                      className="w-4 h-4 rounded text-amber-600 accent-amber-600"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {/* 2. CATERING: GUESTS COUNT (For food & feast packages) */}
+              {isFood && (
+                <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-950">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-amber-700" />
+                      <span>
+                        {isMl
+                          ? 'ഭക്ഷണം നൽകേണ്ട അതിഥികളുടെ എണ്ണം (Guests):'
+                          : 'Guests / Plates to Serve:'}
+                      </span>
+                    </span>
+                    <span className="text-amber-800 text-[11px] font-bold">
+                      ₹
+                      {editingPackage?.pricePerUnit ||
+                        editingPackage?.price ||
+                        editingAddon.unitPrice ||
+                        350}{' '}
+                      / {isMl ? 'പ്ലേറ്റ്' : 'plate'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 bg-white rounded-xl p-1.5 border border-amber-200">
+                    <button
+                      type="button"
+                      onClick={() => handleGuestsChange((Number(addonEditGuests) || 0) - 50)}
+                      className="w-9 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold flex items-center justify-center transition text-xs"
+                    >
+                      -50
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      value={addonEditGuests}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setAddonEditGuests(raw);
+                        const num = parseInt(raw, 10);
+                        if (!isNaN(num) && num > 0) {
+                          if (editingPackage && editingPackage.pricingType === 'per_guest') {
+                            setAddonEditPrice(
+                              calculateRecalculatedPrice(
+                                editingPackage,
+                                num,
+                                Number(addonEditCards) || 0,
+                                addonEditSelectedOptions
+                              )
+                            );
+                          }
+                        }
+                      }}
+                      className="w-24 text-center font-black text-sm text-stone-900 border-none outline-hidden bg-transparent"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleGuestsChange((Number(addonEditGuests) || 0) + 50)}
+                      className="w-9 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center justify-center transition text-xs"
+                    >
+                      +50
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. INVITATIONS: CARDS COUNT */}
+              {isCards && (
+                <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-950">
+                    <span className="flex items-center gap-1.5">
+                      <Mail className="w-4 h-4 text-amber-700" />
+                      <span>
+                        {isMl ? 'പ്രിന്റ് ചെയ്യേണ്ട ആകെ കാർഡുകൾ:' : 'Total Cards to Print:'}
+                      </span>
+                    </span>
+                    <span className="text-amber-800 text-[11px] font-bold">
+                      ₹{editingPackage?.pricePerUnit || editingPackage?.price || 95} /{' '}
+                      {isMl ? 'കാർഡ്' : 'card'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 bg-white rounded-xl p-1.5 border border-amber-200">
+                    <button
+                      type="button"
+                      onClick={() => handleCardsChange((Number(addonEditCards) || 0) - 50)}
+                      className="w-9 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold flex items-center justify-center transition text-xs"
+                    >
+                      -50
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      value={addonEditCards}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setAddonEditCards(raw);
+                        const num = parseInt(raw, 10);
+                        if (!isNaN(num) && num > 0) {
+                          if (editingPackage && editingPackage.pricingType === 'per_card') {
+                            setAddonEditPrice(
+                              calculateRecalculatedPrice(
+                                editingPackage,
+                                Number(addonEditGuests) || 0,
+                                num,
+                                addonEditSelectedOptions
+                              )
+                            );
+                          }
+                        }
+                      }}
+                      className="w-24 text-center font-black text-sm text-stone-900 border-none outline-hidden bg-transparent"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCardsChange((Number(addonEditCards) || 0) + 50)}
+                      className="w-9 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center justify-center transition text-xs"
+                    >
+                      +50
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 4. CUSTOM ADD-ONS / OPTIONS (For any service that has custom options) */}
+              {!isPhotoshoot &&
+                editingPackage?.customOptions &&
+                editingPackage.customOptions.length > 0 && (
+                  <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+                    <span className="text-xs font-bold text-stone-700 block">
+                      {isMl
+                        ? 'കസ്റ്റം ചോയ്‌സുകൾ / അധിക ഓപ്ഷനുകൾ:'
+                        : 'Custom Add-ons & Choices:'}
+                    </span>
+                    <div className="space-y-1.5">
+                      {editingPackage.customOptions.map((opt) => {
+                        const isChecked = addonEditSelectedOptions.includes(opt.id);
+                        return (
+                          <label
+                            key={opt.id}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border text-xs cursor-pointer transition ${
+                              isChecked
+                                ? 'bg-amber-50 border-amber-400 font-bold text-amber-950 shadow-2xs'
+                                : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleOption(opt.id)}
+                                className="w-4 h-4 rounded text-amber-600 accent-amber-600 cursor-pointer"
+                              />
+                              <span>{isMl && opt.labelMl ? opt.labelMl : opt.label}</span>
+                            </div>
+                            {opt.price ? (
+                              <span className="text-xs font-black text-stone-900 ml-2 shrink-0">
+                                +₹{opt.price.toLocaleString('en-IN')}
+                              </span>
+                            ) : null}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+              {/* 5. PACKAGE INCLUSIONS (Shows features for non-photoshoots) */}
+              {!isPhotoshoot &&
+                editingPackage?.features &&
+                editingPackage.features.length > 0 && (
+                  <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200 space-y-1.5">
+                    <span className="text-[10px] font-black text-stone-500 uppercase tracking-wider block">
+                      {isMl
+                        ? 'പാക്കേജിൽ ഉൾപ്പെടുന്നവ (Inclusions):'
+                        : 'Included in Service Package:'}
+                    </span>
+                    <ul className="space-y-1 text-xs text-stone-700">
+                      {editingPackage.features.slice(0, 4).map((f, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="line-clamp-1">{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+              {/* Price Field */}
+              <div>
+                <label className="text-xs font-bold text-stone-700 block mb-1">
+                  {isMl ? 'ആകെ തുക (Rate / Total Price ₹)' : 'Rate / Total Price (₹)'}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={addonEditPrice}
+                  onChange={(e) =>
+                    setAddonEditPrice(e.target.value === '' ? '' : Number(e.target.value))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-black text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingAddon(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:text-stone-900"
+                >
+                  {isMl ? 'റദ്ദാക്കുക' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-stone-950 hover:bg-stone-850 text-white font-black text-xs shadow-md transition active:scale-95 flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                  <span>{isMl ? 'സേവ് ചെയ്യുക' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 };

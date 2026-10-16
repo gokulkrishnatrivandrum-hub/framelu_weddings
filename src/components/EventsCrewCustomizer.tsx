@@ -28,6 +28,7 @@ interface EventsCrewCustomizerProps {
   setBrideEvents: React.Dispatch<React.SetStateAction<Record<EventId, EventCrewConfig>>>;
   rates: PriceRates;
   language?: 'en' | 'ml';
+  defaultEventDate?: string;
 }
 
 export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
@@ -38,6 +39,7 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
   setBrideEvents,
   rates,
   language = 'en',
+  defaultEventDate,
 }) => {
   const isMl = language === 'ml';
 
@@ -64,7 +66,7 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
       const existing = prev[eventId] || {
         enabled: false,
         venue: '',
-        date: '',
+        date: defaultEventDate || '',
         traditionalPhotographers: 1,
         traditionalVideographers: 1,
         candidPhotographers: 0,
@@ -79,6 +81,10 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
         ...existing,
         [field]: value,
       };
+
+      if (!updated.date && defaultEventDate) {
+        updated.date = defaultEventDate;
+      }
 
       // If user increases any counter or enables drone/live, auto-enable the event
       if (
@@ -109,7 +115,7 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
       const existing = prev[eventId] || {
         enabled: false,
         venue: '',
-        date: '',
+        date: defaultEventDate || '',
         traditionalPhotographers: 1,
         traditionalVideographers: 1,
         candidPhotographers: 0,
@@ -120,11 +126,13 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
         photoLivePrinting: false,
       };
 
+      const willBeEnabled = !existing.enabled;
       return {
         ...prev,
         [eventId]: {
           ...existing,
-          enabled: !existing.enabled,
+          enabled: willBeEnabled,
+          date: existing.date || (willBeEnabled ? defaultEventDate || '' : ''),
         },
       };
     });
@@ -154,7 +162,7 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-stone-200">
         <div>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-800 mb-2">
-            {isMl ? 'ഘട്ടം 2 • Step 2' : 'Step 2'}
+            {isMl ? 'ഘട്ടം 2' : 'Step 2 • Ceremonies & Crew'}
           </span>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
             {isMl ? 'ചടങ്ങുകൾ, സ്ഥലം & ഫോട്ടോഗ്രാഫി ക്രൂ' : 'Ceremonies, Venue & Photo Crew'}
@@ -178,7 +186,7 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
-              <span>{isMl ? 'വരന്റെ ചടങ്ങുകൾ (Groom)' : 'Groom Side'}</span>
+              <span>{isMl ? 'വരന്റെ ചടങ്ങുകൾ' : 'Groom Side'}</span>
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${activeSideTab === 'groom' ? 'bg-amber-700 text-white' : 'bg-stone-200 text-stone-700'}`}>
                 {activeGroomCount}
               </span>
@@ -192,7 +200,7 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
                   : 'text-stone-700 hover:text-stone-900'
               }`}
             >
-              <span>{isMl ? 'വധുവിന്റെ ചടങ്ങുകൾ (Bride)' : 'Bride Side'}</span>
+              <span>{isMl ? 'വധുവിന്റെ ചടങ്ങുകൾ' : 'Bride Side'}</span>
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${activeSideTab === 'bride' ? 'bg-rosewood-700 text-white' : 'bg-stone-200 text-stone-700'}`}>
                 {activeBrideCount}
               </span>
@@ -214,15 +222,15 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
           <span>
             {activeSideTab === 'groom'
               ? isMl
-                ? '🤵 വരന്റെ ഭാഗത്തെ ചടങ്ങുകൾ ക്രമീകരിക്കുന്നു (Groom Side Ceremonies)'
-                : '🤵 Configuring: Groom Side Ceremonies & Photo Crew'
+                ? '🤵 വരന്റെ ഭാഗത്തെ ചടങ്ങുകൾ ക്രമീകരിക്കുന്നു'
+                : '🤵 Configuring Groom Side Ceremonies & Photo Crew'
               : isMl
-                ? '👰 വധുവിന്റെ ഭാഗത്തെ ചടങ്ങുകൾ ക്രമീകരിക്കുന്നു (Bride Side Ceremonies)'
-                : '👰 Configuring: Bride Side Ceremonies & Photo Crew'}
+                ? '👰 വധുവിന്റെ ഭാഗത്തെ ചടങ്ങുകൾ ക്രമീകരിക്കുന്നു'
+                : '👰 Configuring Bride Side Ceremonies & Photo Crew'}
           </span>
         </div>
         <span className="text-xs bg-white/90 px-3 py-1 rounded-full font-bold shadow-xs text-stone-800 self-start sm:self-auto">
-          {Object.values(currentEvents).filter((e) => e.enabled).length} {isMl ? 'ചടങ്ങുകൾ സജീവം' : 'Events Active'}
+          {Object.values(currentEvents).filter((e) => e.enabled).length} {isMl ? 'ചടങ്ങുകൾ' : 'Events Active'}
         </span>
       </div>
 
@@ -270,9 +278,6 @@ export const EventsCrewCustomizer: React.FC<EventsCrewCustomizerProps> = ({
                       className="text-base sm:text-lg font-bold text-stone-900 cursor-pointer flex flex-wrap items-center gap-2"
                     >
                       <span>{isMl ? evt.nameMl : evt.nameEn}</span>
-                      <span className="text-xs font-semibold text-stone-400">
-                        ({isMl ? evt.nameEn : evt.nameMl})
-                      </span>
                     </label>
                     <p className="text-xs text-stone-500 mt-0.5">
                       {isMl ? evt.descriptionMl : evt.descriptionEn}

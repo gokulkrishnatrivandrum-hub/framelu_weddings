@@ -256,11 +256,7 @@ export const GallerySection: React.FC<GallerySectionProps> = ({
                     <h3 className="font-black text-base text-stone-900 leading-snug line-clamp-1 group-hover:text-amber-800 transition">
                       {isMl && project.titleMl ? project.titleMl : project.title}
                     </h3>
-                    {project.titleMl && !isMl && (
-                      <p className="text-[11px] text-stone-500 font-medium truncate mt-0.5">
-                        {project.titleMl}
-                      </p>
-                    )}
+
 
                     {project.description && (
                       <p className="text-xs text-stone-600 line-clamp-2 mt-2 leading-relaxed">
