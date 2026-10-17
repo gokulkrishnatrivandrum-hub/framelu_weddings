@@ -43,6 +43,7 @@ import {
   Info,
 } from 'lucide-react';
 import { WhatsAppShareModal } from '@/components/WhatsAppShareModal';
+import { PdfQuotationView } from '@/components/PdfQuotationView';
 
 interface CustomerDashboardModalProps {
   isOpen: boolean;
@@ -81,14 +82,31 @@ export const CustomerDashboardModal: React.FC<CustomerDashboardModalProps> = ({
   const [activeTab, setActiveTab] = useState<'bills' | 'packages' | 'airline' | 'access'>('bills');
   const [shareWhatsAppLead, setShareWhatsAppLead] = useState<CustomerLead | null>(null);
 
-  // Filter bills/leads belonging to this customer by email (case-insensitive) or phone
+  // Filter bills/leads belonging to this customer by email, phone, or userId
   const userEmail = customerUser.email?.toLowerCase().trim();
   const userPhone = customerUser.phone?.replace(/\D/g, '');
+  const userPhoneLast10 = userPhone ? userPhone.slice(-10) : '';
+  const userUsername = (customerUser.username || customerUser.userId || '').toLowerCase().trim();
 
   const customerLeads = leads.filter((l) => {
-    const lEmail = l.email?.toLowerCase().trim();
-    const lPhone = l.phone?.replace(/\D/g, '');
-    return (userEmail && lEmail === userEmail) || (userPhone && lPhone && lPhone === userPhone);
+    // Exclude dummy test leads
+    if (
+      (l.name === 'Arun Krishna' && (l.phone === '9847123456' || l.email === 'arun.krishna@gmail.com')) ||
+      l.id === 'FWC-QUOTE' ||
+      l.id === 'FWC-2026-DUMMY'
+    ) {
+      return false;
+    }
+
+    const lEmails = [l.email, l.ownerEmail, l.userEmail, l.createdByEmail].map((e) => e?.toLowerCase().trim()).filter(Boolean);
+    const lPhones = [l.phone, l.userPhone, l.createdByPhone].map((p) => p?.replace(/\D/g, '').slice(-10)).filter(Boolean);
+    const lUserIds = [l.userId, l.createdByUserId].map((u) => u?.toLowerCase().trim()).filter(Boolean);
+
+    const emailMatch = !!(userEmail && lEmails.includes(userEmail));
+    const phoneMatch = !!(userPhoneLast10 && userPhoneLast10.length >= 10 && lPhones.includes(userPhoneLast10));
+    const userIdMatch = !!(userUsername && lUserIds.includes(userUsername));
+
+    return emailMatch || phoneMatch || userIdMatch;
   });
 
   // Collect all extra services across customer's leads
@@ -363,7 +381,7 @@ export const CustomerDashboardModal: React.FC<CustomerDashboardModalProps> = ({
             <div className="flex items-center gap-2 self-end sm:self-center">
               <button
                 type="button"
-                onClick={onCustomerLogout}
+                onClick={() => onCustomerLogout()}
                 className="text-xs font-bold text-rose-300 hover:text-white bg-rose-500/20 hover:bg-rose-500/40 border border-rose-500/30 px-3 py-1.5 rounded-xl transition cursor-pointer"
                 title="Logout"
               >
@@ -1309,15 +1327,40 @@ export const CustomerDashboardModal: React.FC<CustomerDashboardModalProps> = ({
 
       {/* WhatsApp Share Modal with Attached PDF */}
       {shareWhatsAppLead && (
-        <WhatsAppShareModal
-          isOpen={!!shareWhatsAppLead}
-          onClose={() => setShareWhatsAppLead(null)}
-          lead={shareWhatsAppLead}
-          userRole="customer"
-          studioContact={studioContact}
-          onDownloadPdf={() => onViewPdf(shareWhatsAppLead)}
-          language={language}
-        />
+        <>
+          <PdfQuotationView
+            isOpen={false}
+            isBackgroundRenderer={true}
+            onClose={() => {}}
+            lead={shareWhatsAppLead}
+            side={shareWhatsAppLead.side || 'both'}
+            calculation={{
+              totalPrice: shareWhatsAppLead.totalPrice || 0,
+              items: [],
+              eventTotals: {},
+              deliverablesTotal: 0,
+              groomCrewTotal: 0,
+              brideCrewTotal: 0,
+              photographyTotal: shareWhatsAppLead.totalPrice || 0,
+              otherServicesTotal: 0,
+            }}
+            studioContact={studioContact}
+            language={language}
+            groomEvents={shareWhatsAppLead.groomEvents}
+            brideEvents={shareWhatsAppLead.brideEvents}
+            deliverables={shareWhatsAppLead.deliverables}
+            studioUser={shareWhatsAppLead.studioBranding || undefined}
+          />
+          <WhatsAppShareModal
+            isOpen={!!shareWhatsAppLead}
+            onClose={() => setShareWhatsAppLead(null)}
+            lead={shareWhatsAppLead}
+            userRole="customer"
+            studioContact={studioContact}
+            onDownloadPdf={() => onViewPdf(shareWhatsAppLead)}
+            language={language}
+          />
+        </>
       )}
     </div>
   );

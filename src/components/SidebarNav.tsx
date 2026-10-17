@@ -20,6 +20,7 @@ import {
   Globe,
   Camera,
   Layers,
+  UserCog,
 } from 'lucide-react';
 
 export type MainNavTab =
@@ -29,6 +30,7 @@ export type MainNavTab =
   | 'packages'
   | 'services'
   | 'gallery'
+  | 'profile'
   | 'admin';
 
 interface SidebarNavProps {
@@ -97,17 +99,14 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
       labelMl: 'ഗാലറി & വർക്കുകൾ',
       icon: Images,
     },
+    {
+      id: 'profile' as MainNavTab,
+      labelEn: 'Profile Settings',
+      labelMl: 'പ്രൊഫൈൽ സെറ്റിംഗ്സ്',
+      icon: UserCog,
+    },
   ];
 
-  if (userSession?.role === 'studio') {
-    navItems.push({
-      id: 'admin' as MainNavTab,
-      labelEn: 'Studio Rates & CRM',
-      labelMl: 'സ്റ്റുഡിയോ സെറ്റിംഗ്സ്',
-      icon: Settings,
-      highlight: false,
-    });
-  }
 
   const handleTabClick = (tab: MainNavTab) => {
     onSelectTab(tab);
@@ -205,7 +204,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 {/* Logout / Switch Role */}
                 <button
                   type="button"
-                  onClick={onLogout}
+                  onClick={() => onLogout()}
                   className="p-2 rounded-xl text-stone-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition"
                   title={isMl ? 'ലോഗൗട്ട് ചെയ്യുക' : 'Sign out'}
                 >
@@ -238,7 +237,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             </div>
             <div>
               <h2 className="font-extrabold text-sm tracking-tight text-stone-900">
-                Framelu Event Planner
+                Framelu wedding Company
               </h2>
               <span className="text-[10px] text-stone-400 font-semibold block">
                 {userSession?.role === 'studio' ? 'Studio Partner Portal' : 'Event Portal'}
@@ -299,7 +298,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
               </div>
               <button
                 type="button"
-                onClick={onLogout}
+                onClick={() => onLogout()}
                 className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-stone-200 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-stone-700 font-bold transition text-xs"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -318,7 +317,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           )}
 
           <div className="mt-3 pt-3 border-t border-stone-200/80 text-[10px] text-stone-400 flex items-center justify-between">
-            <span>Framelu Event Planner</span>
+            <span>Framelu wedding Company</span>
             <a
               href={`https://wa.me/${studioContact.whatsapp || '916238747722'}`}
               target="_blank"
@@ -350,7 +349,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                     </div>
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-sm text-stone-900">Framelu Event Planner</h3>
+                    <h3 className="font-extrabold text-sm text-stone-900">Framelu wedding Company</h3>
                     <span className="text-[10px] text-stone-500 font-medium">Menu Navigation</span>
                   </div>
                 </div>
@@ -406,7 +405,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={onLogout}
+                    onClick={() => onLogout()}
                     className="w-full py-2 px-3 rounded-xl border border-stone-200 bg-stone-50 hover:bg-rose-50 hover:text-rose-700 text-stone-700 font-bold text-xs transition"
                   >
                     {isMl ? 'ലോഗൗട്ട് ചെയ്യുക' : 'Sign Out'}
@@ -486,23 +485,23 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           <span className="text-[10px]">{isMl ? 'പാക്കേജ്' : 'Packages'}</span>
         </button>
 
-        {/* Tab: User/Profile */}
+        {/* Tab: User/Profile Settings */}
         <button
           type="button"
           onClick={() => {
             if (userSession) {
-              handleTabClick('dashboard');
+              handleTabClick('profile');
             } else {
               onOpenAuthModal();
             }
           }}
           className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition ${
-            userSession ? 'text-emerald-700 font-extrabold' : 'text-stone-500 font-medium'
+            currentTab === 'profile' ? 'text-amber-600 font-extrabold' : userSession ? 'text-emerald-700 font-extrabold' : 'text-stone-500 font-medium'
           }`}
         >
           <User className="w-5 h-5 mb-0.5" />
           <span className="text-[10px]">
-            {userSession ? userSession.name.split(' ')[0] : (isMl ? 'ലോഗിൻ' : 'Login')}
+            {userSession ? (isMl ? 'പ്രൊഫൈൽ' : 'Profile') : (isMl ? 'ലോഗിൻ' : 'Login')}
           </span>
         </button>
       </nav>

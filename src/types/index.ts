@@ -110,8 +110,14 @@ export interface CustomerUser {
   address: string;
   place: string;
   registeredAt?: string;
+  lastLoginAt?: string;
+  loginCount?: number;
+  role?: 'customer';
+  status?: 'active' | 'deleted';
+  authMethod?: string;
+  photoURL?: string;
   verified?: boolean;
-  verificationMethod?: 'phone' | 'email';
+  verificationMethod?: 'phone' | 'email' | 'google' | string;
   airlineReservations?: AirlineReservation[];
   accessRequests?: CustomerAccessRequest[];
 }
@@ -167,6 +173,9 @@ export interface CustomerLead {
   discountAmount?: number;
   grandTotalAfterDiscount?: number;
   studioBranding?: StudioUser;
+  ownerName?: string;
+  ownerEmail?: string;
+  createdByName?: string;
   userEmail?: string;
   createdByEmail?: string;
   studioEmail?: string;
@@ -178,6 +187,9 @@ export interface CustomerLead {
   source?: 'studio' | 'customer';
   createdBy?: 'studio' | 'customer';
   leadType?: 'wedding' | 'standalone_photoshoot' | 'other_services';
+  pdfUrl?: string;
+  pdfFileName?: string;
+  pdfUploadedAt?: string;
   photoshootType?: string;
   photoshootDetails?: {
     type?: string;
@@ -466,6 +478,11 @@ export interface StudioUser {
   address: string;
   place: string;
   registeredAt?: string;
+  lastLoginAt?: string;
+  loginCount?: number;
+  role?: 'studio';
+  status?: 'active' | 'deleted';
+  authMethod?: string;
   verified?: boolean;
   verificationMethod?: 'phone' | 'email';
 }
@@ -482,4 +499,26 @@ export interface AppUserSession {
   photoURL?: string;
   loggedInAt?: string;
 }
+
+export interface RegisteredLoginUser {
+  id: string;
+  userId: string;
+  role: 'customer' | 'studio';
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  place: string;
+  studioName?: string;
+  ownerName?: string;
+  password?: string;
+  loginCount: number;
+  registeredAt: string;
+  lastLoginAt: string;
+  authMethod?: string;
+  verified?: boolean;
+  status?: 'active' | 'deleted';
+  rawDoc?: CustomerUser | StudioUser | CustomerLead;
+}
+
 

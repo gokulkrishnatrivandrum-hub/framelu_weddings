@@ -14,6 +14,8 @@ import {
   GalleryProject,
   CouponCode,
   PhotoshootConfig,
+  CustomerUser,
+  StudioUser,
 } from '@/types';
 import {
   DEFAULT_RATES,
@@ -40,6 +42,9 @@ import {
   subscribeGalleryProjects,
   subscribeCoupons,
   subscribePhotoshoots,
+  subscribeCustomerUsers,
+  subscribeStudioPartners,
+  saveLeadToCloud,
 } from '@/lib/firestoreSync';
 import {
   Camera,
@@ -73,6 +78,8 @@ export default function AdminPage() {
   const [galleryProjects, setGalleryProjects] = useState<GalleryProject[]>(DEFAULT_GALLERY_PROJECTS);
   const [coupons, setCoupons] = useState<CouponCode[]>(DEFAULT_COUPONS);
   const [photoshoots, setPhotoshoots] = useState<PhotoshootConfig[]>(Object.values(DEFAULT_PHOTOSHOOTS));
+  const [customerUsers, setCustomerUsers] = useState<CustomerUser[]>([]);
+  const [studioPartners, setStudioPartners] = useState<StudioUser[]>([]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -207,6 +214,41 @@ export default function AdminPage() {
         if (data && data.length > 0) setPhotoshoots(data);
       });
 
+      // Load registered users from local cache
+      const savedCustomerUsers = localStorage.getItem('framlu_customer_users_cache');
+      if (savedCustomerUsers) {
+        try {
+          const parsed = JSON.parse(savedCustomerUsers);
+          if (Array.isArray(parsed) && parsed.length > 0) setCustomerUsers(parsed);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      const savedStudioPartners = localStorage.getItem('framlu_studio_partners_cache');
+      if (savedStudioPartners) {
+        try {
+          const parsed = JSON.parse(savedStudioPartners);
+          if (Array.isArray(parsed) && parsed.length > 0) setStudioPartners(parsed);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Also listen to registered customer users so that all logged-in user accounts are visible in admin
+      const unsubUsers = subscribeCustomerUsers((users) => {
+        if (users && users.length > 0) {
+          setCustomerUsers(users);
+        }
+      });
+
+      // Also listen to studio partners
+      const unsubPartners = subscribeStudioPartners((partners) => {
+        if (partners && partners.length > 0) {
+          setStudioPartners(partners);
+        }
+      });
+
       return () => {
         unsubContact && unsubContact();
         unsubRates && unsubRates();
@@ -219,6 +261,8 @@ export default function AdminPage() {
         unsubGallery && unsubGallery();
         unsubCoupons && unsubCoupons();
         unsubPhotoshoots && unsubPhotoshoots();
+        unsubUsers && unsubUsers();
+        unsubPartners && unsubPartners();
       };
     }
   }, []);
@@ -267,7 +311,7 @@ export default function AdminPage() {
             </div>
             <div>
               <span className="font-black text-lg tracking-tight text-white block leading-tight">
-                FRAMELU <span className="text-amber-500">WEDDINGS</span>
+                FRAMELU <span className="text-amber-500">WEDDING COMPANY</span>
               </span>
               <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">
                 Private Company Portal
@@ -438,6 +482,10 @@ export default function AdminPage() {
         setCoupons={setCoupons}
         photoshoots={photoshoots}
         setPhotoshoots={setPhotoshoots}
+        customerUsers={customerUsers}
+        setCustomerUsers={setCustomerUsers}
+        studioPartners={studioPartners}
+        setStudioPartners={setStudioPartners}
         onCloseAdmin={handleLogout}
         language="en"
       />

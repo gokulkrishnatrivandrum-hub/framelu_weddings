@@ -80,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ? `🏢 ${studioUser.studioName} (${studioUser.place}) • Partner Mode`
                 : customerUser
                 ? `👤 ${customerUser.name} • ${customerUser.place || customerUser.phone}`
-                : `${studioContact.destination} • ${isMl ? 'ഫ്രെയിം ലൂ വെഡ്ഡിംഗ് കമ്പനി' : 'Framelu Wedding Photography & Films'}`}
+                : `${studioContact.destination} • ${isMl ? 'ഫ്രെയിം ലൂ വെഡ്ഡിംഗ് കമ്പനി' : 'Framelu wedding Company'}`}
             </span>
           </div>
 
@@ -158,12 +158,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-black text-xl tracking-tight text-stone-900">
-                FRAMELU <span className="text-amber-600 font-black">EVENT PLANNER</span>
+                FRAMELU <span className="text-amber-600 font-black">WEDDING COMPANY</span>
               </span>
               <Heart className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
             </div>
             <p className="text-[11px] font-semibold text-stone-500 tracking-wide">
-              Framelu Event Planner • {studioContact.destination.split(',')[0]}
+              Framelu wedding Company • {studioContact.destination.split(',')[0]}
             </p>
           </div>
         </div>
@@ -254,7 +254,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
               <button
                 type="button"
-                onClick={onStudioLogout}
+                onClick={() => onStudioLogout?.()}
                 className="text-[10px] font-black bg-stone-950 text-white hover:bg-stone-800 px-2 py-1 rounded-xl transition cursor-pointer shrink-0"
                 title="Logout from Studio Portal"
               >

@@ -21,8 +21,8 @@ export async function generateQuotationPdfBlob(
 ): Promise<GeneratedPdfResult> {
   const { jsPDF } = await import('jspdf');
 
-  const brandName = lead.studioBranding?.studioName || 'FRAMELU WEDDINGS & EVENTS';
-  const quoteNo = lead.id || `LFB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const brandName = lead.studioBranding?.studioName || 'FRAMELU WEDDING COMPANY';
+  const quoteNo = lead.id || `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const safeBrand = brandName.replace(/[^a-zA-Z0-9-_]/g, '_');
   const safeQuote = quoteNo.replace(/[^a-zA-Z0-9-_]/g, '_');
   const safeName = (lead.name || 'Customer').replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -39,99 +39,13 @@ export async function generateQuotationPdfBlob(
   const docElement = typeof document !== 'undefined' ? document.getElementById('printable-quotation-doc') : null;
   if (docElement && docElement.offsetHeight > 100) {
     try {
-      if (document.fonts && document.fonts.ready) {
-        await document.fonts.ready;
-      }
-      const { toPng } = await import('html-to-image');
-      const imgData = await toPng(docElement, {
-        pixelRatio: 2.2,
-        backgroundColor: '#ffffff',
-        cacheBust: true,
-        style: {
-          margin: '0',
-          boxShadow: 'none',
-          border: 'none',
-          borderRadius: '0',
-        },
-      });
-
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true,
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const marginX = 10;
-      const marginY = 10;
-      const printWidth = pdfWidth - marginX * 2;
-
-      const img = new Image();
-      img.src = imgData;
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = (e) => reject(e);
-      });
-
-      const imgWidth = img.naturalWidth || img.width;
-      const imgHeight = img.naturalHeight || img.height;
-      const totalMmHeight = (imgHeight * printWidth) / imgWidth;
-      const availMmPage = pdfHeight - marginY * 2;
-
-      let remainingMm = totalMmHeight;
-      let startY = 0;
-      let page = 1;
-
-      while (remainingMm > 0) {
-        if (page > 1) pdf.addPage();
-        const renderHeight = Math.min(remainingMm, availMmPage);
-
-        // Canvas slice
-        const canvas = document.createElement('canvas');
-        canvas.width = imgWidth;
-        canvas.height = (renderHeight * imgWidth) / printWidth;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(
-            img,
-            0,
-            (startY * imgWidth) / printWidth,
-            imgWidth,
-            canvas.height,
-            0,
-            0,
-            imgWidth,
-            canvas.height
-          );
-          const sliceData = canvas.toDataURL('image/png');
-          pdf.addImage(sliceData, 'PNG', marginX, marginY, printWidth, renderHeight, undefined, 'FAST');
-        }
-
-        // Running page footer
-        pdf.setFontSize(8);
-        pdf.setTextColor(150, 140, 130);
-        pdf.text(
-          `${brandName} • Official Quotation (${quoteNo}) • Valid for 30 Days`,
-          marginX,
-          pdfHeight - 4
-        );
-        pdf.text(
-          `Page ${page}`,
-          pdfWidth - marginX,
-          pdfHeight - 4,
-          { align: 'right' }
-        );
-
-        remainingMm -= availMmPage;
-        startY += availMmPage;
-        page++;
-      }
-
-      const blob = pdf.output('blob');
-      const file = new File([blob], fileName, { type: 'application/pdf' });
-      return { blob, file, fileName };
+      return await generateMasterPdfFromElement(
+        docElement,
+        brandName,
+        quoteNo,
+        lead.name,
+        studioContact.phone || '+91 6238747722'
+      );
     } catch (domErr) {
       console.warn('DOM capture failed, falling back to direct vector PDF:', domErr);
     }
@@ -477,4 +391,242 @@ export async function shareQuotationPdfWithNativeSheet(
     console.warn('Native share error:', err);
     return false;
   }
+}
+
+/**
+ * Captures the exact DOM of #printable-quotation-doc and generates
+ * the official High-Res multi-page PDF with anti-cut smart slicing.
+ */
+export async function generateMasterPdfFromElement(
+  docElement: HTMLElement,
+  brandName: string,
+  quoteNo: string,
+  customerName: string,
+  displayPhone: string
+): Promise<GeneratedPdfResult> {
+  const { jsPDF } = await import('jspdf');
+  const { toPng } = await import('html-to-image');
+
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    await document.fonts.ready;
+  }
+
+  const imgData = await toPng(docElement, {
+    pixelRatio: 2.4,
+    backgroundColor: '#ffffff',
+    cacheBust: true,
+    style: {
+      margin: '0',
+      boxShadow: 'none',
+      border: 'none',
+      borderRadius: '0',
+    },
+  });
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+  });
+
+  const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+  const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+
+  const marginX = 12; // 12mm left & right margins
+  const marginTop = 12; // 12mm top margin on page 1
+  const marginBottom = 14; // 14mm bottom margin
+  const printableWidth = pdfWidth - marginX * 2; // 186mm
+  const headerHeight = 9; // 9mm for running header on page 2+
+  const printableHeightPage1 = pdfHeight - marginTop - marginBottom; // 271mm
+  const contentTopPage2 = marginTop + headerHeight; // 21mm
+  const printableHeightPage2 = pdfHeight - contentTopPage2 - marginBottom; // 262mm
+
+  const img = new Image();
+  img.src = imgData;
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = (e) => reject(e);
+  });
+
+  const imgWidth = img.naturalWidth || img.width;
+  const imgHeight = img.naturalHeight || img.height;
+  const totalRenderHeight = (imgHeight * printableWidth) / imgWidth;
+
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = imgWidth;
+  sourceCanvas.height = imgHeight;
+  const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+  if (!sourceCtx) throw new Error('Could not get canvas context');
+  sourceCtx.drawImage(img, 0, 0);
+
+  const findCleanCutY = (idealY: number, minY: number): number => {
+    const scanStart = Math.min(Math.round(idealY), imgHeight - 1);
+    const scanEnd = Math.max(Math.round(minY), 0);
+    let bestY = scanStart;
+    let minDarkPixels = Infinity;
+
+    for (let y = scanStart; y >= scanEnd; y -= 2) {
+      const rowData = sourceCtx.getImageData(0, y, imgWidth, 1).data;
+      let darkCount = 0;
+      for (let x = 0; x < imgWidth; x += 4) {
+        const idx = x * 4;
+        const r = rowData[idx];
+        const g = rowData[idx + 1];
+        const b = rowData[idx + 2];
+        const a = rowData[idx + 3];
+        if (a > 180 && (r < 240 || g < 240 || b < 240)) {
+          darkCount++;
+        }
+      }
+      if (darkCount === 0) return y;
+      if (darkCount < minDarkPixels) {
+        minDarkPixels = darkCount;
+        bestY = y;
+      }
+    }
+    return bestY;
+  };
+
+  if (totalRenderHeight <= printableHeightPage1) {
+    pdf.addImage(imgData, 'PNG', marginX, marginTop, printableWidth, totalRenderHeight, undefined, 'FAST');
+    pdf.setFontSize(8);
+    pdf.setTextColor(150, 140, 130);
+    pdf.setDrawColor(220, 215, 210);
+    pdf.setLineWidth(0.2);
+    pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
+    pdf.text(`Page 1 of 1 • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
+    pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
+  } else if (totalRenderHeight <= printableHeightPage1 * 1.15) {
+    const fitScale = printableHeightPage1 / totalRenderHeight;
+    const scaledWidth = printableWidth * fitScale;
+    const scaledHeight = totalRenderHeight * fitScale;
+    const offsetX = marginX + (printableWidth - scaledWidth) / 2;
+    pdf.addImage(imgData, 'PNG', offsetX, marginTop, scaledWidth, scaledHeight, undefined, 'FAST');
+    pdf.setFontSize(8);
+    pdf.setTextColor(150, 140, 130);
+    pdf.setDrawColor(220, 215, 210);
+    pdf.setLineWidth(0.2);
+    pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
+    pdf.text(`Page 1 of 1 • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
+    pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
+  } else {
+    const docRect = docElement.getBoundingClientRect();
+    const scaleY = imgHeight / (docElement.offsetHeight || 1);
+
+    const avoidNodes = Array.from(
+      docElement.querySelectorAll<HTMLElement>(
+        '.pdf-section, .break-inside-avoid, [data-pdf-block], .pdf-ceremony-item, .pdf-service-item, #printable-quotation-doc > div'
+      )
+    );
+
+    const avoidRanges = avoidNodes
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          top: (r.top - docRect.top) * scaleY,
+          bottom: (r.bottom - docRect.top) * scaleY,
+          height: r.height * scaleY,
+        };
+      })
+      .filter((rg) => rg.height > 10)
+      .sort((a, b) => a.top - b.top);
+
+    const slices: { startY: number; endY: number; isFirstPage: boolean }[] = [];
+    let currentY = 0;
+
+    while (currentY < imgHeight - 15) {
+      const isFirst = slices.length === 0;
+      const availHeightMm = isFirst ? printableHeightPage1 : printableHeightPage2;
+      const maxCanvasPageHeight = (imgWidth * availHeightMm) / printableWidth;
+      const remainingHeight = imgHeight - currentY;
+
+      if (remainingHeight <= maxCanvasPageHeight) {
+        slices.push({ startY: currentY, endY: imgHeight, isFirstPage: isFirst });
+        break;
+      }
+
+      const targetCutY = currentY + maxCanvasPageHeight;
+      let idealCutY = targetCutY;
+
+      for (const range of avoidRanges) {
+        if (range.top < targetCutY - 10 && range.bottom > targetCutY + 10) {
+          if (range.top > currentY + maxCanvasPageHeight * 0.3) {
+            idealCutY = Math.min(idealCutY, range.top);
+          }
+        }
+      }
+
+      const cleanCutY = findCleanCutY(
+        idealCutY,
+        currentY + maxCanvasPageHeight * 0.3
+      );
+      const finalCutY = cleanCutY > currentY + 50 ? cleanCutY : targetCutY;
+      slices.push({ startY: currentY, endY: finalCutY, isFirstPage: isFirst });
+      currentY = finalCutY;
+    }
+
+    const totalPages = slices.length;
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = imgWidth;
+    const sliceCtx = sliceCanvas.getContext('2d');
+
+    for (let i = 0; i < slices.length; i++) {
+      const slice = slices[i];
+      const pageNum = i + 1;
+      const sliceHeight = slice.endY - slice.startY;
+
+      if (pageNum > 1) {
+        pdf.addPage();
+      }
+
+      if (sliceCtx && sliceHeight > 0) {
+        sliceCanvas.height = sliceHeight;
+        sliceCtx.clearRect(0, 0, imgWidth, sliceHeight);
+        sliceCtx.drawImage(
+          img,
+          0,
+          slice.startY,
+          imgWidth,
+          sliceHeight,
+          0,
+          0,
+          imgWidth,
+          sliceHeight
+        );
+
+        const sliceData = sliceCanvas.toDataURL('image/png');
+        const sliceRenderHeight = (sliceHeight * printableWidth) / imgWidth;
+        const contentTop = slice.isFirstPage ? marginTop : contentTopPage2;
+
+        if (pageNum > 1) {
+          pdf.setFontSize(8);
+          pdf.setTextColor(120, 113, 108);
+          pdf.text(`${brandName} • Official Proposal (${quoteNo})`, marginX, marginTop + 3);
+          pdf.setDrawColor(220, 215, 210);
+          pdf.setLineWidth(0.2);
+          pdf.line(marginX, marginTop + 5.5, pdfWidth - marginX, marginTop + 5.5);
+        }
+
+        pdf.addImage(sliceData, 'PNG', marginX, contentTop, printableWidth, sliceRenderHeight, undefined, 'FAST');
+
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 140, 130);
+        pdf.setDrawColor(220, 215, 210);
+        pdf.setLineWidth(0.2);
+        pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
+        pdf.text(`Page ${pageNum} of ${totalPages} • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
+        pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
+      }
+    }
+  }
+
+  const safeBrand = (brandName || 'Framelu_wedding_Company').replace(/[^a-zA-Z0-9-_]/g, '_');
+  const safeQuote = quoteNo.replace(/[^a-zA-Z0-9-_]/g, '_');
+  const safeName = (customerName || 'Customer').replace(/[^a-zA-Z0-9-_]/g, '_');
+  const fileName = `${safeBrand}_Quotation_${safeQuote}_${safeName}.pdf`;
+
+  const blob = pdf.output('blob');
+  const file = new File([blob], fileName, { type: 'application/pdf' });
+  return { blob, file, fileName };
 }

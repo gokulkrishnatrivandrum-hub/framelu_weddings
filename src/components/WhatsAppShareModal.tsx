@@ -10,6 +10,7 @@ import {
   shareQuotationPdfWithNativeSheet,
   GeneratedPdfResult,
 } from '@/utils/pdfGenerator';
+import { uploadQuotationPdfToCloud, getOnlineQuotationUrl } from '@/lib/storageSync';
 import {
   X,
   Share2,
@@ -28,6 +29,8 @@ import {
   Paperclip,
   Check,
   Eye,
+  Link,
+  Cloud,
 } from 'lucide-react';
 
 interface WhatsAppShareModalProps {
@@ -35,11 +38,12 @@ interface WhatsAppShareModalProps {
   onClose: () => void;
   lead: CustomerLead;
   calculation?: CalculationResult;
-  userRole?: 'customer' | 'studio';
+  userRole?: 'customer' | 'studio' | 'admin';
   studioContact: StudioContactConfig;
   onDownloadPdf?: () => void;
   isDownloadingPdf?: boolean;
   language?: 'en' | 'ml';
+  preGeneratedPdf?: GeneratedPdfResult | null;
 }
 
 export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
@@ -52,6 +56,7 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
   onDownloadPdf,
   isDownloadingPdf = false,
   language = 'en',
+  preGeneratedPdf,
 }) => {
   const isMl = language === 'ml';
 
@@ -75,11 +80,16 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
 
   // Generated PDF State
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [pdfResult, setPdfResult] = useState<GeneratedPdfResult | null>(null);
+  const [pdfResult, setPdfResult] = useState<GeneratedPdfResult | null>(preGeneratedPdf || null);
   const [isSending, setIsSending] = useState(false);
   const [desktopAttachTip, setDesktopAttachTip] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   const [canNativeShare, setCanNativeShare] = useState(false);
+
+  // Cloud Storage PDF State
+  const [cloudPdfUrl, setCloudPdfUrl] = useState<string | null>(lead.pdfUrl || null);
+  const [isUploadingCloud, setIsUploadingCloud] = useState(false);
+  const [copiedPdfLink, setCopiedPdfLink] = useState(false);
 
   // Sync phone & recipient type on open or lead change
   useEffect(() => {
@@ -92,6 +102,38 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
       setPhoneError('');
       setDesktopAttachTip(false);
       setCopiedText(false);
+      setCopiedPdfLink(false);
+
+      const existingUrl = lead.pdfUrl || null;
+      setCloudPdfUrl(existingUrl);
+
+      const handleCloudUpload = async (res: GeneratedPdfResult) => {
+        if (!existingUrl) {
+          setIsUploadingCloud(true);
+          try {
+            const url = await uploadQuotationPdfToCloud(res.blob, lead, res.fileName);
+            if (url) {
+              setCloudPdfUrl(url);
+            }
+          } catch (uploadErr) {
+            console.warn('PDF cloud upload note:', uploadErr);
+          } finally {
+            setIsUploadingCloud(false);
+          }
+        }
+      };
+
+      if (preGeneratedPdf) {
+        setPdfResult(preGeneratedPdf);
+        if (canShareFiles(preGeneratedPdf.file)) {
+          setCanNativeShare(true);
+        } else {
+          setCanNativeShare(false);
+        }
+        setIsGeneratingPdf(false);
+        handleCloudUpload(preGeneratedPdf);
+        return;
+      }
 
       // Pre-generate PDF for instant sharing & attachment
       setIsGeneratingPdf(true);
@@ -103,6 +145,7 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
           } else {
             setCanNativeShare(false);
           }
+          handleCloudUpload(res);
         })
         .catch((err) => {
           console.warn('PDF pre-generation error:', err);
@@ -111,13 +154,13 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
           setIsGeneratingPdf(false);
         });
     }
-  }, [isOpen, lead, studioContact, calculation]);
+  }, [isOpen, lead, studioContact, calculation, preGeneratedPdf]);
 
   if (!isOpen) return null;
 
-  const quoteNo = lead.id || `LFB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const quoteNo = lead.id || `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const totalAmount = lead.grandTotal || lead.totalPrice || calculation?.totalPrice || 0;
-  const brandName = lead.studioBranding?.studioName || 'FRAMELU WEDDINGS & EVENTS';
+  const brandName = lead.studioBranding?.studioName || 'FRAMELU EVENT PLANNER';
 
   const studioPhoneClean = (studioContact.whatsapp || studioContact.phone || '916238747722').replace(/\D/g, '');
 
@@ -176,9 +219,11 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
     return clean;
   };
 
-  const generateWhatsAppMessage = () => {
+  const generateWhatsAppMessage = (overridePdfUrl?: string | null) => {
     const clientName = lead.name || 'Valued Client';
     const targetBrand = brandName;
+    const activePdfUrl = overridePdfUrl !== undefined ? overridePdfUrl : cloudPdfUrl;
+    const onlineUrl = getOnlineQuotationUrl(lead);
 
     let text = `*${targetBrand.toUpperCase()} - OFFICIAL WEDDING QUOTATION*\n\n`;
 
@@ -202,8 +247,15 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
     text += `• Advance Booking (25%): ₹${Math.round(totalAmount * 0.25).toLocaleString('en-IN')}\n`;
     text += `• On Shoot Completion (50%): ₹${Math.round(totalAmount * 0.50).toLocaleString('en-IN')}\n`;
     text += `• Final Delivery (25%): ₹${(totalAmount - Math.round(totalAmount * 0.25) - Math.round(totalAmount * 0.50)).toLocaleString('en-IN')}\n\n`;
-    text += `📎 *ATTACHED PDF QUOTATION DOCUMENT:*\n`;
-    text += `The official itemized proposal document (${pdfResult?.fileName || `${quoteNo}.pdf`}) has been generated and attached for your review.\n\n`;
+
+    text += `📄 *OFFICIAL PDF QUOTATION DOCUMENT:*\n`;
+    if (activePdfUrl) {
+      text += `👉 *Download / View PDF:* ${activePdfUrl}\n`;
+      text += `🌐 *Online Proposal Portal:* ${onlineUrl}\n\n`;
+    } else {
+      text += `🌐 *View & Download Official PDF Online:* ${onlineUrl}\n\n`;
+    }
+
     text += `${targetBrand}\nPhone: ${studioContact.phone || '+91 6238747722'}  |  WhatsApp: +${studioPhoneClean}`;
 
     return text;
@@ -243,35 +295,54 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
     setIsSending(true);
 
     try {
-      // 1. Ensure PDF is generated
+      // 1. Download PDF file locally immediately if generated so user has it on hand
       let currentPdf = pdfResult;
-      if (!currentPdf) {
-        currentPdf = await generateQuotationPdfBlob(lead, studioContact, calculation);
-        setPdfResult(currentPdf);
-      }
-
-      // 2. Download PDF file to device so user has it instantly ready to attach
       if (currentPdf) {
         downloadPdfBlob(currentPdf.blob, currentPdf.fileName);
+      } else {
+        // Quick background generation
+        generateQuotationPdfBlob(lead, studioContact, calculation)
+          .then((res) => {
+            setPdfResult(res);
+            downloadPdfBlob(res.blob, res.fileName);
+          })
+          .catch(() => {});
       }
 
-      const textMsg = generateWhatsAppMessage();
+      // 2. Build message with current cloud URL or online quote viewer link
+      const textMsg = generateWhatsAppMessage(cloudPdfUrl);
 
-      // Copy text to clipboard for quick paste
+      // Copy text to clipboard in background
       try {
         if (navigator?.clipboard) {
-          await navigator.clipboard.writeText(textMsg);
-          setCopiedText(true);
+          navigator.clipboard.writeText(textMsg).then(() => setCopiedText(true)).catch(() => {});
         }
-      } catch {
-        // clipboard write optional
-      }
+      } catch {}
 
-      // Open WhatsApp web or app with direct chat to this exact phone number
-      // https://api.whatsapp.com/send/?phone=... opens chat directly even if not in contacts!
+      // 3. Open WhatsApp directly to target phone number
       const waUrl = `https://api.whatsapp.com/send/?phone=${targetPhone}&text=${encodeURIComponent(textMsg)}`;
       setDesktopAttachTip(true);
-      window.open(waUrl, '_blank');
+
+      // Try window.open first, fallback to direct location or anchor click
+      const newWin = window.open(waUrl, '_blank');
+      if (!newWin || newWin.closed || typeof newWin.closed === 'undefined') {
+        const link = document.createElement('a');
+        link.href = waUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      // 4. Background cloud upload if not yet done
+      if (!cloudPdfUrl && currentPdf) {
+        uploadQuotationPdfToCloud(currentPdf.blob, lead, currentPdf.fileName)
+          .then((url) => {
+            if (url) setCloudPdfUrl(url);
+          })
+          .catch(() => {});
+      }
     } catch (err) {
       console.error('WhatsApp send error:', err);
     } finally {
@@ -289,7 +360,15 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
         setPdfResult(currentPdf);
       }
 
-      const textMsg = generateWhatsAppMessage();
+      let targetPdfUrl = cloudPdfUrl;
+      if (!targetPdfUrl && currentPdf) {
+        try {
+          targetPdfUrl = await uploadQuotationPdfToCloud(currentPdf.blob, lead, currentPdf.fileName);
+          if (targetPdfUrl) setCloudPdfUrl(targetPdfUrl);
+        } catch {}
+      }
+
+      const textMsg = generateWhatsAppMessage(targetPdfUrl);
 
       if (currentPdf && canShareFiles(currentPdf.file)) {
         await shareQuotationPdfWithNativeSheet(
@@ -309,7 +388,7 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/75 backdrop-blur-xs animate-fade-in">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-stone-950/75 backdrop-blur-xs animate-fade-in">
       <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-7 shadow-2xl border border-stone-200 relative max-h-[92vh] overflow-y-auto">
         <button
           onClick={onClose}
@@ -355,6 +434,16 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
                       <Loader2 className="w-3 h-3 animate-spin" />
                       {isMl ? 'PDF തയ്യാറാക്കുന്നു...' : 'Preparing PDF...'}
                     </span>
+                  ) : isUploadingCloud ? (
+                    <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      {isMl ? 'ക്ലൗഡിലേക്ക് അപ്‌ലോഡ് ചെയ്യുന്നു...' : 'Uploading to Cloud...'}
+                    </span>
+                  ) : cloudPdfUrl ? (
+                    <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      {isMl ? '✓ ക്ലൗഡ് PDF ലിങ്ക് തയ്യാറാണ്' : '✓ Cloud PDF Link Ready'}
+                    </span>
                   ) : (
                     <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -365,16 +454,45 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleDownloadOnly}
-              disabled={isGeneratingPdf}
-              className="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-100 text-stone-800 text-[11px] font-bold border border-stone-300 shadow-xs flex items-center gap-1 transition shrink-0 cursor-pointer"
-              title="Download PDF to device"
-            >
-              <Download className="w-3.5 h-3.5 text-stone-600" />
-              <span>{isMl ? 'ഡൗൺലോഡ്' : 'Download'}</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {cloudPdfUrl && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(cloudPdfUrl);
+                      setCopiedPdfLink(true);
+                      setTimeout(() => setCopiedPdfLink(false), 2500);
+                    } catch {}
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-stone-100 text-stone-800 text-[11px] font-bold border border-stone-300 shadow-xs flex items-center gap-1 transition cursor-pointer"
+                  title={isMl ? 'PDF ലിങ്ക് കോപ്പി ചെയ്യുക' : 'Copy Cloud PDF Link'}
+                >
+                  {copiedPdfLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{isMl ? 'കോപ്പി ആയി' : 'Copied'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link className="w-3.5 h-3.5 text-stone-600" />
+                      <span>{isMl ? 'ലിങ്ക്' : 'Link'}</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleDownloadOnly}
+                disabled={isGeneratingPdf}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-100 text-stone-800 text-[11px] font-bold border border-stone-300 shadow-xs flex items-center gap-1 transition cursor-pointer"
+                title="Download PDF to device"
+              >
+                <Download className="w-3.5 h-3.5 text-stone-600" />
+                <span>{isMl ? 'ഡൗൺലോഡ്' : 'Download'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -614,12 +732,12 @@ export const WhatsAppShareModal: React.FC<WhatsAppShareModalProps> = ({
           <div className="p-3.5 rounded-2xl bg-emerald-100/90 border border-emerald-300 mb-4 animate-fade-in text-xs text-emerald-950 space-y-1.5">
             <p className="font-black flex items-center gap-1.5 text-emerald-950">
               <CheckCircle2 className="w-4.5 h-4.5 text-emerald-700" />
-              <span>{isMl ? 'PDF ഡൗൺലോഡ് ആയിട്ടുണ്ട് & WhatsApp തുറന്നു!' : 'PDF Downloaded & WhatsApp Opened!'}</span>
+              <span>{isMl ? 'WhatsApp തുറന്നു & ഒഫീഷ്യൽ PDF ലിങ്ക് നൽകിയിട്ടുണ്ട്!' : 'WhatsApp Opened & Official PDF Link Included!'}</span>
             </p>
             <p className="text-[11px] text-emerald-900 leading-relaxed font-medium">
               {isMl
-                ? 'തുറന്നുവന്ന WhatsApp ചാറ്റിൽ താഴെയുള്ള 📎 (പേപ്പർക്ലിപ്പ് / Attach Document) ഐക്കൺ ക്ലിക്ക് ചെയ്ത് ഇപ്പോൾ ഡൗൺലോഡ് ചെയ്ത ഈ PDF തിരഞ്ഞെടുത്ത് Send അമർത്തുക.'
-                : 'In the opened WhatsApp chat, click the 📎 paperclip (Document) icon, select the downloaded quotation PDF, and hit Send!'}
+                ? 'WhatsApp മെസ്സേജിൽ ഒഫീഷ്യൽ PDF ഡൗൺലോഡ് ചെയ്യാനുള്ള ക്ലൗഡ് ലിങ്ക് ചേർത്തിട്ടുണ്ട്. കസ്റ്റമർക്ക് ആ ലിങ്ക് ക്ലിക്ക് ചെയ്താൽ ഉടൻ തന്നെ ഒഫീഷ്യൽ PDF ഫോണിൽ തുറക്കാനും ഡൗൺലോഡ് ചെയ്യാനും സാധിക്കും.'
+                : 'The official PDF direct download link is included in the WhatsApp message. The client can open the link directly on their phone to view and download their proposal.'}
             </p>
             {copiedText && (
               <span className="inline-block text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-md">

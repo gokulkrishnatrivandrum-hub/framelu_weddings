@@ -53,15 +53,20 @@ export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
     const newErrors: Record<string, string> = {};
+
+    const cleanName = (formData.name || '').trim();
+    if (!cleanName) {
+      newErrors.name = isMl ? 'ദയവായി നിങ്ങളുടെ പേര് നൽകുക (Please enter your name)' : 'Please enter your name';
+    }
 
     const cleanPhone = formData.phone.replace(/\D/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
-      newErrors.phone = 'ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക (Valid 10-digit phone required)';
+      newErrors.phone = isMl ? 'ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക (Valid 10-digit phone required)' : 'Valid 10-digit phone required';
     } else if (cleanPhone.length === 10 && !['6', '7', '8', '9'].includes(cleanPhone.charAt(0))) {
-      newErrors.phone = 'ഇന്ത്യൻ മൊബൈൽ നമ്പറുകൾ 6, 7, 8, 9 ലാണ് തുടങ്ങുന്നത്. ശരിയായ WhatsApp നമ്പർ നൽകുക (Valid Indian mobile required)';
+      newErrors.phone = isMl ? 'ഇന്ത്യൻ മൊബൈൽ നമ്പറുകൾ 6, 7, 8, 9 ലാണ് തുടങ്ങുന്നത്. ശരിയായ WhatsApp നമ്പർ നൽകുക' : 'Valid Indian mobile required (must start with 6, 7, 8, or 9)';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -71,9 +76,10 @@ export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
 
     onSubmit({
       ...formData,
+      id: initialLead?.id,
       totalPrice,
-      createdAt: new Date().toISOString(),
-      status: 'New',
+      createdAt: initialLead?.createdAt || new Date().toISOString(),
+      status: initialLead?.status || 'New',
     });
   };
 
@@ -102,7 +108,28 @@ export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-left">
+        {formData.name && formData.phone && (
+          <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+            <div className="min-w-0">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                {isMl ? 'ലോഗിൻ ചെയ്ത അക്കൗണ്ട് വിവരങ്ങൾ' : 'Saved Account Details'}
+              </span>
+              <p className="text-xs font-black text-stone-900 truncate mt-0.5">
+                {formData.name} • {formData.phone}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black py-2 px-3.5 rounded-xl text-xs transition shadow-sm shrink-0 cursor-pointer"
+            >
+              {isMl ? '⚡ ഇപ്പോൾ കാണുക' : '⚡ View PDF Now'}
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} noValidate className="space-y-4 text-left">
           {/* Name */}
           <div>
             <label className="block text-xs font-bold text-stone-700 mb-1">
@@ -201,11 +228,12 @@ export const LeadCaptureModal: React.FC<LeadCaptureModalProps> = ({
 
           <div className="pt-2">
             <button
-              type="submit"
-              className="w-full bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold py-3.5 px-4 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-sm"
+              type="button"
+              onClick={handleSubmit}
+              className="w-full bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold py-3.5 px-4 rounded-2xl shadow-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer active:scale-98"
             >
               <CheckCircle2 className="w-5 h-5" />
-              <span>കൊട്ടേഷൻ കാണുക & PDF ഡൗൺലോഡ് ചെയ്യുക</span>
+              <span>{isMl ? 'കൊട്ടേഷൻ കാണുക & PDF ഡൗൺലോഡ് ചെയ്യുക' : 'View Quotation & Download PDF'}</span>
             </button>
             <p className="text-[11px] text-stone-400 text-center mt-2">
               നിങ്ങളുടെ വിവരങ്ങൾ സ്റ്റുഡിയോയുടെ അഡ്മിൻ പാനലിൽ സുരക്ഷിതമായി സൂക്ഷിക്കപ്പെടുന്നതാണ്

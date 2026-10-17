@@ -283,6 +283,18 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         return isMl
           ? 'ഇന്റർനെറ്റ് കണക്ഷൻ പരിശോധിക്കുക.'
           : 'Network error. Please check your internet connection.';
+      case 'auth/unauthorized-domain':
+        return isMl
+          ? 'ഗൂഗിൾ ഓതന്റിക്കേഷൻ എറർ (auth/unauthorized-domain): ദയവായി http://localhost:3000 വഴി ആപ്പ് തുറക്കുക അല്ലെങ്കിൽ Firebase Console-ൽ Authorized Domains പരിശോധിക്കുക.'
+          : 'Firebase Auth Error: Please access via http://localhost:3000 or verify authorized domains in Firebase Console (auth/unauthorized-domain).';
+      case 'auth/operation-not-allowed':
+        return isMl
+          ? 'ഫയർബേസ് എറർ: സൈൻ ഇൻ സംവിധാനം Firebase Console-ൽ enable ചെയ്തിട്ടില്ല (auth/operation-not-allowed).'
+          : 'Firebase Auth Error: Sign-in method is not enabled in Firebase Console.';
+      case 'auth/popup-blocked':
+        return isMl
+          ? 'ബ്രൗസർ ഗൂഗിൾ പോപ്പ്-അപ്പ് വിൻഡോ തടഞ്ഞു (auth/popup-blocked). പോപ്പ്-അപ്പ് അനുവദിക്കുക.'
+          : 'Browser blocked Google popup (auth/popup-blocked). Please allow popups.';
       default:
         return (
           error?.message ||
@@ -687,14 +699,14 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
 
       // 1. Check if user already exists in Firestore or local cache
       const existingUser = await getCustomerUserByIdentifier(gEmail);
-      if (existingUser) {
-        // Direct login without asking anything!
+      if (existingUser && existingUser.phone) {
+        // Returning user with completed profile: direct login without prompting!
         onSuccess(existingUser);
         onClose();
         return;
       }
 
-      // 2. Check if user has an existing lead
+      // 2. Check if user has an existing lead with contact details
       const savedLeadsRaw = typeof window !== 'undefined'
         ? localStorage.getItem('framlu_wedding_leads') || localStorage.getItem('lumina_wedding_leads')
         : null;
@@ -706,15 +718,16 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         } catch (e) {}
       }
 
-      if (matchedLead) {
+      if (matchedLead && matchedLead.phone) {
         const leadUser: CustomerUser = {
           name: matchedLead.name || gName,
           phone: matchedLead.phone || '',
           email: gEmail,
           address: matchedLead.address || 'Kerala',
           place: matchedLead.place || 'Kerala',
+          photoURL: gPhoto,
           verified: true,
-          verificationMethod: 'email',
+          verificationMethod: 'google',
           registeredAt: matchedLead.createdAt || new Date().toISOString(),
         };
         await saveCustomerUserToCloud(leadUser);
@@ -723,6 +736,7 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         return;
       }
 
+      // First-time new user: Show profile completion form to collect details
       setGoogleAccount({
         email: gEmail,
         name: gName,
@@ -733,15 +747,23 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
         ...prev,
         email: gEmail,
         name: gName || prev.name,
+        phone: prev.phone || (gUser.phoneNumber ? gUser.phoneNumber.replace(/\D/g, '').slice(-10) : ''),
       }));
 
       // Only for first-time new user, prompt profile completion
       setStep('google_profile_completion');
     } catch (err: any) {
       console.error('Customer Google sign in error:', err);
-      if (err.code !== 'auth/popup-closed-by-user') {
-        setAuthError(getFriendlyErrorMessage(err));
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        return;
       }
+      if (err.code === 'auth/unauthorized-domain') {
+        if (typeof window !== 'undefined' && window.location.hostname === '127.0.0.1') {
+          window.location.replace(window.location.href.replace('127.0.0.1', 'localhost'));
+          return;
+        }
+      }
+      setAuthError(getFriendlyErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -1023,9 +1045,19 @@ export const CustomerAuthModal: React.FC<CustomerAuthModalProps> = ({
             </div>
 
             {authError && (
-              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 text-left">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                <span>{authError}</span>
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start justify-between gap-2.5 text-xs text-rose-700 text-left">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                  <span>{authError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAuthError('')}
+                  className="p-1 rounded-md text-rose-400 hover:text-rose-700 transition cursor-pointer"
+                  title="Clear"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
 

@@ -24,6 +24,27 @@ import {
   PhotoshootConfig,
 } from '@/types';
 
+// Deep sanitize object to remove any undefined values before writing to Firestore
+export const sanitizeForFirestore = (obj: any): any => {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj
+      .map(sanitizeForFirestore)
+      .filter((v) => v !== undefined);
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      const sanitized = sanitizeForFirestore(value);
+      if (sanitized !== undefined) {
+        clean[key] = sanitized;
+      }
+    }
+  }
+  return clean;
+};
+
 // ==========================================
 // 1. STUDIO CONTACT SETTINGS
 // ==========================================
@@ -402,20 +423,41 @@ export const subscribeCustomerLeads = (
     return onSnapshot(
       colRef,
       (snapshot) => {
-        const leads: CustomerLead[] = [];
+        const cloudLeads: CustomerLead[] = [];
         snapshot.forEach((d) => {
-          leads.push({ id: d.id, ...(d.data() as any) });
+          cloudLeads.push({ id: d.id, ...(d.data() as any) });
         });
+
+        // Merge with local storage leads so offline/local items are never lost if cloud is empty
+        let mergedLeads = [...cloudLeads];
+        if (typeof window !== 'undefined') {
+          try {
+            const savedRaw = localStorage.getItem('framlu_wedding_leads') || localStorage.getItem('lumina_wedding_leads');
+            if (savedRaw) {
+              const localList: CustomerLead[] = JSON.parse(savedRaw);
+              localList.forEach((localLead) => {
+                if (localLead.id && !mergedLeads.some((m) => m.id === localLead.id)) {
+                  mergedLeads.push(localLead);
+                  // Background sync to cloud
+                  const docRef = doc(db, 'leads', localLead.id);
+                  setDoc(docRef, sanitizeForFirestore(localLead), { merge: true }).catch(() => {});
+                }
+              });
+            }
+          } catch (e) {}
+        }
+
         // Sort newest first
-        leads.sort((a, b) => {
+        mergedLeads.sort((a, b) => {
           const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return tB - tA;
         });
-        onData(leads);
+
+        onData(mergedLeads);
         if (typeof window !== 'undefined') {
-          localStorage.setItem('framlu_wedding_leads', JSON.stringify(leads));
-          localStorage.setItem('lumina_wedding_leads', JSON.stringify(leads));
+          localStorage.setItem('framlu_wedding_leads', JSON.stringify(mergedLeads));
+          localStorage.setItem('lumina_wedding_leads', JSON.stringify(mergedLeads));
         }
       },
       (err) => {
@@ -430,11 +472,34 @@ export const subscribeCustomerLeads = (
 
 export const saveLeadToCloud = async (lead: CustomerLead) => {
   const leadId = lead.id || `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-  const cleanLead = {
+  const ownerName = lead.ownerName || lead.createdByName || lead.name || '';
+  const ownerEmail = lead.ownerEmail || lead.createdByEmail || lead.userEmail || lead.email || '';
+
+  const cleanLead = sanitizeForFirestore({
     ...lead,
     id: leadId,
+    name: lead.name || ownerName,
+    email: lead.email || ownerEmail,
+    ownerName,
+    ownerEmail,
+    createdByName: lead.createdByName || ownerName,
+    createdByEmail: lead.createdByEmail || ownerEmail,
     createdAt: lead.createdAt || new Date().toISOString(),
-  };
+  });
+
+  // Always update localStorage immediately for instant UI responsiveness
+  if (typeof window !== 'undefined') {
+    try {
+      const savedRaw = localStorage.getItem('framlu_wedding_leads') || localStorage.getItem('lumina_wedding_leads');
+      let currentLeads: CustomerLead[] = savedRaw ? JSON.parse(savedRaw) : [];
+      const exists = currentLeads.some((l) => l.id === leadId);
+      currentLeads = exists ? currentLeads.map((l) => (l.id === leadId ? cleanLead : l)) : [cleanLead, ...currentLeads];
+      localStorage.setItem('framlu_wedding_leads', JSON.stringify(currentLeads));
+      localStorage.setItem('lumina_wedding_leads', JSON.stringify(currentLeads));
+    } catch (e) {
+      console.warn('Local lead caching error:', e);
+    }
+  }
 
   try {
     const docRef = doc(db, 'leads', leadId);
@@ -542,20 +607,36 @@ export const subscribeStudioPartners = (onData: (data: StudioUser[]) => void) =>
 
 export const saveStudioPartnerToCloud = async (partner: StudioUser) => {
   const cleanEmail = (partner.email || '').toLowerCase().trim();
-  const partnerId = cleanEmail
+  const partnerId = partner.id || (cleanEmail
     ? `STUDIO-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`
-    : (partner.id || `STUDIO-${partner.phone.replace(/[^0-9]/g, '')}`);
+    : `STUDIO-${partner.phone.replace(/[^0-9]/g, '')}`);
 
-  const cleanPartner = {
+  const loginCount = (typeof partner.loginCount === 'number' && partner.loginCount > 0)
+    ? partner.loginCount
+    : 1;
+
+  const cleanPartner = sanitizeForFirestore({
     ...partner,
     id: partnerId,
     email: cleanEmail,
+    role: 'studio',
+    status: 'active',
+    loginCount,
+    lastLoginAt: partner.lastLoginAt || new Date().toISOString(),
     registeredAt: partner.registeredAt || new Date().toISOString(),
-  };
+  });
 
   if (typeof window !== 'undefined') {
     localStorage.setItem('wedding_studio_user', JSON.stringify(cleanPartner));
-    localStorage.setItem(`wedding_studio_${cleanEmail}`, JSON.stringify(cleanPartner));
+    localStorage.setItem('framlu_studio_partner', JSON.stringify(cleanPartner));
+    if (cleanEmail) localStorage.setItem(`wedding_studio_${cleanEmail}`, JSON.stringify(cleanPartner));
+    try {
+      const cached = localStorage.getItem('framlu_studio_partners_cache');
+      let list: StudioUser[] = cached ? JSON.parse(cached) : [];
+      const exists = list.some((s) => s.id === partnerId || (cleanEmail && s.email?.toLowerCase().trim() === cleanEmail));
+      list = exists ? list.map((s) => (s.id === partnerId || (cleanEmail && s.email?.toLowerCase().trim() === cleanEmail) ? cleanPartner : s)) : [cleanPartner, ...list];
+      localStorage.setItem('framlu_studio_partners_cache', JSON.stringify(list));
+    } catch (e) {}
   }
 
   try {
@@ -568,32 +649,141 @@ export const saveStudioPartnerToCloud = async (partner: StudioUser) => {
   }
 };
 
-export const getStudioPartnerByEmail = async (email: string): Promise<StudioUser | null> => {
-  if (!email) return null;
-  const cleanEmail = email.toLowerCase().trim();
-  const docId = `STUDIO-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+export const deleteStudioPartnerFromCloud = async (partnerIdOrEmail: string): Promise<boolean> => {
+  if (!partnerIdOrEmail) return false;
+  const raw = partnerIdOrEmail.trim();
+  const clean = raw.toLowerCase();
 
-  // Check localStorage first for instant 0ms speed
+  const candidateIds = new Set<string>();
+  candidateIds.add(raw);
+  candidateIds.add(clean);
+  if (clean.includes('@')) {
+    candidateIds.add(`STUDIO-${clean.replace(/[^a-z0-9]/g, '_')}`);
+    candidateIds.add(`STUDIO-${clean}`);
+    candidateIds.add(clean.split('@')[0]);
+  }
+  if (clean.startsWith('studio-')) {
+    const after = clean.slice(7);
+    candidateIds.add(`STUDIO-${after}`);
+    candidateIds.add(`STUDIO-${after.replace(/[^a-z0-9]/g, '_')}`);
+  }
+  const cleanPhone = raw.replace(/\D/g, '');
+  if (cleanPhone) {
+    candidateIds.add(`STUDIO-${cleanPhone}`);
+    candidateIds.add(`STUDIO-${cleanPhone.slice(-10)}`);
+  }
+
+  // Clear local caches
   if (typeof window !== 'undefined') {
-    const cachedSpecific = localStorage.getItem(`wedding_studio_${cleanEmail}`);
-    if (cachedSpecific) {
-      try {
-        return JSON.parse(cachedSpecific);
-      } catch (e) {}
-    }
+    candidateIds.forEach((id) => {
+      localStorage.removeItem(`wedding_studio_${id}`);
+      localStorage.removeItem(`wedding_studio_${id.toLowerCase()}`);
+    });
+    localStorage.removeItem('wedding_studio_user');
+    localStorage.removeItem('framlu_studio_partner');
     const cachedPartners = localStorage.getItem('framlu_studio_partners_cache');
     if (cachedPartners) {
       try {
         const list = JSON.parse(cachedPartners);
-        const found = list.find((p: any) => p.email?.toLowerCase().trim() === cleanEmail);
-        if (found) return found;
+        const filtered = list.filter((p: any) => {
+          const pId = p.id || '';
+          const pEmail = (p.email || '').toLowerCase().trim();
+          const pPhone = (p.phone || '').replace(/\D/g, '');
+          if (candidateIds.has(pId) || candidateIds.has(pId.toLowerCase())) return false;
+          if (clean.includes('@') && pEmail === clean) return false;
+          if (cleanPhone && (pPhone === cleanPhone || pPhone.endsWith(cleanPhone.slice(-10)))) return false;
+          return true;
+        });
+        localStorage.setItem('framlu_studio_partners_cache', JSON.stringify(filtered));
+      } catch (e) {}
+    }
+    const currentSessionRaw = localStorage.getItem('lfb_user_session');
+    if (currentSessionRaw) {
+      try {
+        const sess = JSON.parse(currentSessionRaw);
+        if (
+          sess.email?.toLowerCase().trim() === clean ||
+          candidateIds.has(sess.userId) ||
+          sess.phone?.replace(/\D/g, '') === cleanPhone
+        ) {
+          localStorage.removeItem('lfb_user_session');
+        }
       } catch (e) {}
     }
   }
 
+  // Delete matching docs from Firestore
+  for (const docId of candidateIds) {
+    try {
+      const docRef = doc(db, 'studio_partners', docId);
+      await deleteDoc(docRef);
+    } catch (err) {}
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('framlu_user_deleted', {
+        detail: { id: raw, email: clean, phone: cleanPhone },
+      })
+    );
+  }
+  return true;
+};
+
+export const getStudioPartnerByEmail = async (email: string): Promise<StudioUser | null> => {
+  if (!email) return null;
+  const cleanEmail = email.toLowerCase().trim();
+  const docId = cleanEmail.startsWith('studio-')
+    ? cleanEmail.toUpperCase()
+    : `STUDIO-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+
+  // 1. Fast local cache lookup
+  if (typeof window !== 'undefined') {
+    try {
+      const cachedPartners = localStorage.getItem('framlu_studio_partners_cache');
+      if (cachedPartners) {
+        const list = JSON.parse(cachedPartners);
+        const match = list.find((s: any) => s.email?.toLowerCase().trim() === cleanEmail || s.id === docId);
+        if (match && match.name && match.status !== 'deleted') return match;
+      }
+      const cachedSpecific = localStorage.getItem(`wedding_studio_${cleanEmail}`);
+      if (cachedSpecific) {
+        const parsed = JSON.parse(cachedSpecific);
+        if (parsed && parsed.status !== 'deleted') return parsed;
+      }
+      const singleStudio = localStorage.getItem('framlu_studio_partner') || localStorage.getItem('wedding_studio_user');
+      if (singleStudio) {
+        const parsed = JSON.parse(singleStudio);
+        if (parsed && parsed.email?.toLowerCase().trim() === cleanEmail && parsed.status !== 'deleted') return parsed;
+      }
+      // Check leads cache for studio branding
+      const cachedLeads = localStorage.getItem('framlu_wedding_leads') || localStorage.getItem('lumina_wedding_leads');
+      if (cachedLeads) {
+        const lList = JSON.parse(cachedLeads);
+        const found = lList.find((l: any) =>
+          l.studioBranding &&
+          (l.studioBranding.email?.toLowerCase().trim() === cleanEmail ||
+           (l.ownerEmail && l.ownerEmail.toLowerCase().trim() === cleanEmail && l.createdByRole === 'studio'))
+        );
+        if (found && found.studioBranding) {
+          return {
+            id: docId,
+            studioName: found.studioBranding.studioName || found.studioBranding.name || 'Studio Partner',
+            ownerName: found.studioBranding.ownerName || found.ownerName || 'Studio Owner',
+            phone: found.studioBranding.phone || found.phone || '',
+            email: cleanEmail,
+            address: found.studioBranding.address || 'Kerala',
+            place: found.studioBranding.place || 'Kayamkulam',
+            role: 'studio',
+            status: 'active',
+          };
+        }
+      }
+    } catch (e) {}
+  }
+
   try {
-    // 1200ms timeout so login NEVER freezes or blocks the user
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200));
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
     const fetchPromise = getDoc(doc(db, 'studio_partners', docId)).then((docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as StudioUser;
@@ -606,11 +796,12 @@ export const getStudioPartnerByEmail = async (email: string): Promise<StudioUser
     });
 
     const result = await Promise.race([fetchPromise, timeoutPromise]);
-    return result;
+    if (result) return result;
   } catch (err) {
     console.warn('getStudioPartnerByEmail Firestore note:', err);
-    return null;
   }
+
+  return null;
 };
 
 // ==========================================
@@ -667,13 +858,32 @@ export const subscribeCustomerUsers = (onData: (users: CustomerUser[]) => void) 
     return onSnapshot(
       colRef,
       (snapshot) => {
-        const list: CustomerUser[] = [];
+        const cloudUsers: CustomerUser[] = [];
         snapshot.forEach((d) => {
-          list.push({ ...d.data(), id: d.id } as CustomerUser);
+          cloudUsers.push({ ...d.data(), id: d.id } as CustomerUser);
         });
-        onData(list);
+
+        // Merge with local cache so newly logged in user on client is never lost
+        let mergedUsers = [...cloudUsers];
         if (typeof window !== 'undefined') {
-          localStorage.setItem('framlu_customer_users_cache', JSON.stringify(list));
+          try {
+            const cached = localStorage.getItem('framlu_customer_users_cache');
+            if (cached) {
+              const localList: CustomerUser[] = JSON.parse(cached);
+              localList.forEach((localUser) => {
+                const uEmail = (localUser.email || '').toLowerCase().trim();
+                const uId = localUser.id;
+                if (!mergedUsers.some((m) => (uId && m.id === uId) || (uEmail && m.email?.toLowerCase().trim() === uEmail))) {
+                  mergedUsers.push(localUser);
+                }
+              });
+            }
+          } catch (e) {}
+        }
+
+        onData(mergedUsers);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_customer_users_cache', JSON.stringify(mergedUsers));
         }
       },
       (err) => {
@@ -688,24 +898,40 @@ export const subscribeCustomerUsers = (onData: (users: CustomerUser[]) => void) 
 
 export const saveCustomerUserToCloud = async (user: CustomerUser): Promise<CustomerUser> => {
   const cleanEmail = (user.email || '').toLowerCase().trim();
-  const cleanUsername = (user.username || (cleanEmail ? cleanEmail.split('@')[0] : '')).toLowerCase().trim();
-  const userId = cleanEmail
+  const cleanPhone = (user.phone || '').replace(/\D/g, '');
+  const cleanUsername = (user.username || user.userId || (cleanEmail ? cleanEmail.split('@')[0] : (cleanPhone ? `user_${cleanPhone.slice(-4)}` : 'user'))).toLowerCase().trim();
+  const userId = user.id || (cleanEmail
     ? `CUST-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`
-    : `CUST-${cleanUsername.replace(/[^a-z0-9]/g, '_')}`;
+    : `CUST-${cleanUsername.replace(/[^a-z0-9]/g, '_')}`);
 
-  const cleanUser: CustomerUser = {
+  const loginCount = (typeof user.loginCount === 'number' && user.loginCount > 0)
+    ? user.loginCount
+    : 1;
+
+  const cleanUser: CustomerUser = sanitizeForFirestore({
     ...user,
     id: userId,
-    userId: cleanUsername || user.userId || cleanEmail.split('@')[0],
+    userId: cleanUsername || user.userId || (cleanEmail ? cleanEmail.split('@')[0] : `user_${cleanPhone.slice(-4)}`),
     email: cleanEmail,
     username: cleanUsername,
+    role: 'customer',
+    status: 'active',
+    loginCount,
+    lastLoginAt: user.lastLoginAt || new Date().toISOString(),
     registeredAt: user.registeredAt || new Date().toISOString(),
-  };
+  });
 
   if (typeof window !== 'undefined') {
     localStorage.setItem('framlu_wedding_user', JSON.stringify(cleanUser));
     if (cleanEmail) localStorage.setItem(`cust_user_${cleanEmail}`, JSON.stringify(cleanUser));
     if (cleanUsername) localStorage.setItem(`cust_user_${cleanUsername}`, JSON.stringify(cleanUser));
+    try {
+      const cached = localStorage.getItem('framlu_customer_users_cache');
+      let list: CustomerUser[] = cached ? JSON.parse(cached) : [];
+      const exists = list.some((u) => u.id === userId || (cleanEmail && u.email?.toLowerCase().trim() === cleanEmail));
+      list = exists ? list.map((u) => (u.id === userId || (cleanEmail && u.email?.toLowerCase().trim() === cleanEmail) ? cleanUser : u)) : [cleanUser, ...list];
+      localStorage.setItem('framlu_customer_users_cache', JSON.stringify(list));
+    } catch (e) {}
   }
 
   try {
@@ -718,50 +944,180 @@ export const saveCustomerUserToCloud = async (user: CustomerUser): Promise<Custo
   }
 };
 
-export const getCustomerUserByIdentifier = async (identifier: string): Promise<CustomerUser | null> => {
-  if (!identifier) return null;
-  const clean = identifier.toLowerCase().trim();
-  const emailDocId = `CUST-${clean.replace(/[^a-z0-9]/g, '_')}`;
+export const deleteCustomerUserFromCloud = async (docIdOrEmail: string): Promise<boolean> => {
+  if (!docIdOrEmail) return false;
+  const raw = docIdOrEmail.trim();
+  const clean = raw.toLowerCase();
 
-  // Check localStorage first for instant 0ms speed
+  const candidateIds = new Set<string>();
+  candidateIds.add(raw);
+  candidateIds.add(clean);
+  if (clean.includes('@')) {
+    candidateIds.add(`CUST-${clean.replace(/[^a-z0-9]/g, '_')}`);
+    candidateIds.add(`CUST-${clean}`);
+    candidateIds.add(clean.split('@')[0]);
+  }
+  if (clean.startsWith('cust-')) {
+    const after = clean.slice(5);
+    candidateIds.add(`CUST-${after}`);
+    candidateIds.add(`CUST-${after.replace(/[^a-z0-9]/g, '_')}`);
+  }
+  const cleanPhone = raw.replace(/\D/g, '');
+  if (cleanPhone) {
+    candidateIds.add(`CUST-${cleanPhone}`);
+    candidateIds.add(`CUST-${cleanPhone.slice(-10)}`);
+  }
+
+  // Clear local caches
   if (typeof window !== 'undefined') {
-    const cached = localStorage.getItem(`cust_user_${clean}`);
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {}
-    }
-    const savedUserRaw = localStorage.getItem('framlu_wedding_user');
-    if (savedUserRaw) {
-      try {
-        const u = JSON.parse(savedUserRaw);
-        if (
-          u.email?.toLowerCase().trim() === clean ||
-          u.username?.toLowerCase().trim() === clean ||
-          u.userId?.toLowerCase().trim() === clean
-        ) {
-          return u;
-        }
-      } catch (e) {}
-    }
+    candidateIds.forEach((id) => {
+      localStorage.removeItem(`cust_user_${id}`);
+      localStorage.removeItem(`cust_user_${id.toLowerCase()}`);
+    });
+    localStorage.removeItem('framlu_wedding_user');
+    localStorage.removeItem('lumina_wedding_user');
     const cachedUsers = localStorage.getItem('framlu_customer_users_cache');
     if (cachedUsers) {
       try {
         const list = JSON.parse(cachedUsers);
-        const found = list.find((u: any) =>
-          u.email?.toLowerCase().trim() === clean ||
-          u.username?.toLowerCase().trim() === clean ||
-          u.userId?.toLowerCase().trim() === clean ||
-          (u.phone && u.phone.replace(/\D/g, '') === clean.replace(/\D/g, ''))
-        );
-        if (found) return found;
+        const filtered = list.filter((u: any) => {
+          const uId = u.id || '';
+          const uEmail = (u.email || '').toLowerCase().trim();
+          const uPhone = (u.phone || '').replace(/\D/g, '');
+          if (candidateIds.has(uId) || candidateIds.has(uId.toLowerCase())) return false;
+          if (clean.includes('@') && uEmail === clean) return false;
+          if (cleanPhone && (uPhone === cleanPhone || uPhone.endsWith(cleanPhone.slice(-10)))) return false;
+          return true;
+        });
+        localStorage.setItem('framlu_customer_users_cache', JSON.stringify(filtered));
+      } catch (e) {}
+    }
+    const currentSessionRaw = localStorage.getItem('lfb_user_session');
+    if (currentSessionRaw) {
+      try {
+        const sess = JSON.parse(currentSessionRaw);
+        if (
+          sess.email?.toLowerCase().trim() === clean ||
+          candidateIds.has(sess.userId) ||
+          sess.phone?.replace(/\D/g, '') === cleanPhone
+        ) {
+          localStorage.removeItem('lfb_user_session');
+        }
       } catch (e) {}
     }
   }
 
+  // Delete matching docs from Firestore
+  for (const docId of candidateIds) {
+    try {
+      const docRef = doc(db, 'customer_users', docId);
+      await deleteDoc(docRef);
+    } catch (err) {}
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('framlu_user_deleted', {
+        detail: { id: raw, email: clean, phone: cleanPhone },
+      })
+    );
+  }
+  return true;
+};
+
+export const bulkDeleteUsersFromCloud = async (
+  usersToDelete: Array<{ id: string; role: 'customer' | 'studio'; email?: string; userId?: string; phone?: string }>
+): Promise<boolean> => {
   try {
-    // 1200ms timeout so UI never freezes
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200));
+    for (const u of usersToDelete) {
+      if (u.role === 'studio') {
+        await deleteStudioPartnerFromCloud(u.id);
+        if (u.email) await deleteStudioPartnerFromCloud(u.email);
+        if (u.phone) await deleteStudioPartnerFromCloud(u.phone);
+      } else {
+        await deleteCustomerUserFromCloud(u.id);
+        if (u.email) await deleteCustomerUserFromCloud(u.email);
+        if (u.phone) await deleteCustomerUserFromCloud(u.phone);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to bulk delete users from Firestore:', err);
+    return false;
+  }
+};
+
+export const getCustomerUserByIdentifier = async (identifier: string): Promise<CustomerUser | null> => {
+  if (!identifier) return null;
+  const clean = identifier.toLowerCase().trim();
+  const cleanDigits = identifier.replace(/\D/g, '');
+  const emailDocId = clean.startsWith('cust-')
+    ? clean.toUpperCase()
+    : `CUST-${clean.replace(/[^a-z0-9]/g, '_')}`;
+
+  // 1. Fast local cache lookup across all cached registered customers
+  if (typeof window !== 'undefined') {
+    try {
+      const cachedUsersRaw = localStorage.getItem('framlu_customer_users_cache');
+      if (cachedUsersRaw) {
+        const list = JSON.parse(cachedUsersRaw);
+        const match = list.find((u: any) =>
+          u.id === emailDocId ||
+          (u.email && u.email.toLowerCase().trim() === clean) ||
+          (cleanDigits.length >= 10 && (u.phone || '').replace(/\D/g, '').slice(-10) === cleanDigits.slice(-10)) ||
+          (u.username && u.username.toLowerCase().trim() === clean) ||
+          (u.userId && u.userId.toLowerCase().trim() === clean)
+        );
+        if (match && match.name && match.status !== 'deleted') return match;
+      }
+      const specific = localStorage.getItem(`cust_user_${clean}`);
+      if (specific) {
+        const parsed = JSON.parse(specific);
+        if (parsed && parsed.status !== 'deleted') return parsed;
+      }
+      const singleCust = localStorage.getItem('framlu_wedding_user') || localStorage.getItem('lumina_wedding_user');
+      if (singleCust) {
+        const parsed = JSON.parse(singleCust);
+        if (
+          parsed &&
+          parsed.status !== 'deleted' &&
+          (parsed.email?.toLowerCase().trim() === clean ||
+            (cleanDigits.length >= 10 && (parsed.phone || '').replace(/\D/g, '').slice(-10) === cleanDigits.slice(-10)) ||
+            parsed.username?.toLowerCase().trim() === clean)
+        ) {
+          return parsed;
+        }
+      }
+      // Check leads cache for customer info
+      const cachedLeads = localStorage.getItem('framlu_wedding_leads') || localStorage.getItem('lumina_wedding_leads');
+      if (cachedLeads) {
+        const lList = JSON.parse(cachedLeads);
+        const found = lList.find((l: any) =>
+          (l.email && l.email.toLowerCase().trim() === clean) ||
+          (l.ownerEmail && l.ownerEmail.toLowerCase().trim() === clean) ||
+          (l.createdByEmail && l.createdByEmail.toLowerCase().trim() === clean) ||
+          (l.userEmail && l.userEmail.toLowerCase().trim() === clean) ||
+          (cleanDigits.length >= 10 && (l.phone || '').replace(/\D/g, '').slice(-10) === cleanDigits.slice(-10))
+        );
+        if (found && (found.name || found.ownerName)) {
+          return {
+            id: emailDocId,
+            name: found.ownerName || found.name,
+            email: clean.includes('@') ? clean : (found.email || ''),
+            phone: found.phone || cleanDigits,
+            address: found.address || found.venueLocation || 'Kerala',
+            place: found.place || 'കായംകുളം',
+            registeredAt: found.createdAt || new Date().toISOString(),
+            role: 'customer',
+            status: 'active',
+          };
+        }
+      }
+    } catch (e) {}
+  }
+
+  try {
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
 
     const fetchDoc = getDoc(doc(db, 'customer_users', emailDocId)).then(async (docSnap) => {
       if (docSnap.exists()) {
@@ -776,26 +1132,79 @@ export const getCustomerUserByIdentifier = async (identifier: string): Promise<C
 
     const result = await Promise.race([fetchDoc, timeoutPromise]);
     if (result) return result;
-
-    // Check cached list fallback
-    if (typeof window !== 'undefined') {
-      const cachedUsers = localStorage.getItem('framlu_customer_users_cache');
-      if (cachedUsers) {
-        try {
-          const list = JSON.parse(cachedUsers);
-          const found = list.find((u: any) =>
-            u.email?.toLowerCase().trim() === clean ||
-            u.username?.toLowerCase().trim() === clean ||
-            u.userId?.toLowerCase().trim() === clean
-          );
-          if (found) return found;
-        } catch (e) {}
-      }
-    }
-
-    return null;
   } catch (err) {
     console.warn('getCustomerUserByIdentifier error:', err);
+  }
+
+  return null;
+};
+
+// Record every user login in Firestore & increment login count
+export const recordUserLogin = async (
+  session: {
+    role: 'customer' | 'studio';
+    name: string;
+    userId: string;
+    phone: string;
+    email?: string;
+    address?: string;
+    place?: string;
+    studioName?: string;
+    authMethod?: string;
+  }
+) => {
+  try {
+    const nowIso = new Date().toISOString();
+    const cleanEmail = (session.email || '').toLowerCase().trim();
+    const cleanPhone = (session.phone || '').replace(/\D/g, '');
+
+    if (session.role === 'studio') {
+      const existing = cleanEmail ? await getStudioPartnerByEmail(cleanEmail) : (cleanPhone ? await getStudioPartnerByEmail(cleanPhone) : null);
+      const count = (existing?.loginCount || 0) + 1;
+      const stId = existing?.id || (cleanEmail ? `STUDIO-${cleanEmail.replace(/[^a-z0-9]/g, '_')}` : `STUDIO-${cleanPhone || 'partner'}`);
+      const studioToSave: StudioUser = {
+        ...(existing || {}),
+        id: stId,
+        studioName: session.studioName || existing?.studioName || session.name || 'Studio Partner',
+        ownerName: session.name || existing?.ownerName || 'Studio Owner',
+        phone: cleanPhone || existing?.phone || '',
+        email: cleanEmail || existing?.email || '',
+        address: session.address || existing?.address || 'Kerala',
+        place: session.place || existing?.place || 'കായംകുളം',
+        registeredAt: existing?.registeredAt || nowIso,
+        lastLoginAt: nowIso,
+        loginCount: count,
+        role: 'studio',
+        status: 'active',
+        authMethod: session.authMethod || existing?.authMethod || (cleanEmail ? 'google' : 'phone'),
+      };
+      await saveStudioPartnerToCloud(studioToSave);
+      return studioToSave;
+    } else {
+      const existing = cleanEmail ? await getCustomerUserByIdentifier(cleanEmail) : (cleanPhone ? await getCustomerUserByIdentifier(cleanPhone) : null);
+      const count = (existing?.loginCount || 0) + 1;
+      const custId = existing?.id || (cleanEmail ? `CUST-${cleanEmail.replace(/[^a-z0-9]/g, '_')}` : `CUST-${cleanPhone || session.userId || 'user'}`);
+      const custToSave: CustomerUser = {
+        ...(existing || {}),
+        id: custId,
+        name: session.name || existing?.name || 'Customer User',
+        phone: cleanPhone || existing?.phone || '',
+        email: cleanEmail || existing?.email || '',
+        username: session.userId || existing?.username || (cleanEmail ? cleanEmail.split('@')[0] : `user_${cleanPhone.slice(-4)}`),
+        address: session.address || existing?.address || 'Kerala',
+        place: session.place || existing?.place || 'കായംകുളം',
+        registeredAt: existing?.registeredAt || nowIso,
+        lastLoginAt: nowIso,
+        loginCount: count,
+        role: 'customer',
+        status: 'active',
+        authMethod: session.authMethod || existing?.authMethod || (cleanEmail ? 'google' : 'phone'),
+      };
+      await saveCustomerUserToCloud(custToSave);
+      return custToSave;
+    }
+  } catch (err) {
+    console.warn('recordUserLogin error:', err);
     return null;
   }
 };

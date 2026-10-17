@@ -142,6 +142,7 @@ export const QuotesDashboard: React.FC<QuotesDashboardProps> = ({
       const lUserPhone = (l.userPhone || '').replace(/\D/g, '').slice(-10);
       const studioBrandingPhone = (l.studioBranding?.phone || '').replace(/\D/g, '').slice(-10);
 
+      const lOwnerEmail = (l.ownerEmail || '').toLowerCase().trim();
       const lEmail = (l.email || '').toLowerCase().trim();
       const lUserEmail = (l.userEmail || '').toLowerCase().trim();
       const lCreatedByEmail = (l.createdByEmail || '').toLowerCase().trim();
@@ -150,8 +151,15 @@ export const QuotesDashboard: React.FC<QuotesDashboardProps> = ({
       const lUserId = (l.userId || '').toLowerCase().trim();
       const lCreatedByUserId = (l.createdByUserId || '').toLowerCase().trim();
 
+      const isGenericEmail = (e?: string) =>
+        !e || !e.includes('@') || e.startsWith('user@') || e.includes('framluweddings.com');
+
+      const isGenericId = (id?: string) =>
+        !id || ['user', 'customer', 'studio', 'client', 'admin', 'studio_user', 'undefined', 'null'].includes(id);
+
       const phoneMatches = !!(
         userPhone &&
+        userPhone.length >= 10 &&
         (lPhone === userPhone ||
           lCreatedByPhone === userPhone ||
           lUserPhone === userPhone ||
@@ -160,7 +168,9 @@ export const QuotesDashboard: React.FC<QuotesDashboardProps> = ({
 
       const emailMatches = !!(
         userEmail &&
-        (lEmail === userEmail ||
+        !isGenericEmail(userEmail) &&
+        (lOwnerEmail === userEmail ||
+          lEmail === userEmail ||
           lUserEmail === userEmail ||
           lCreatedByEmail === userEmail ||
           studioBrandingEmail === userEmail)
@@ -168,7 +178,9 @@ export const QuotesDashboard: React.FC<QuotesDashboardProps> = ({
 
       const userIdMatches = !!(
         userId &&
-        (lUserId === userId || lCreatedByUserId === userId)
+        !isGenericId(userId) &&
+        ((lUserId && !isGenericId(lUserId) && lUserId === userId) ||
+          (lCreatedByUserId && !isGenericId(lCreatedByUserId) && lCreatedByUserId === userId))
       );
 
       if (userSession.role === 'studio') {
@@ -1206,72 +1218,80 @@ export const QuotesDashboard: React.FC<QuotesDashboardProps> = ({
       </div>
 
       {/* 4. QUICK SERVICE CREATION CARDS */}
-      <div className="bg-gradient-to-r from-stone-900 via-stone-900 to-stone-850 text-white rounded-3xl p-5 sm:p-6 shadow-md">
-        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 block mb-3">
-          {isMl ? 'സർവീസ് തിരഞ്ഞെടുത്ത് കൊട്ടേഷൻ ആരംഭിക്കുക' : 'Start a New Quote by Service'}
-        </span>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Option 1: Wedding */}
-          <div
-            onClick={() => onStartNewQuote('wedding')}
-            className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-400/50 cursor-pointer transition flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                <Camera className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-xs sm:text-sm font-black text-white">
-                  {isMl ? 'വിവാഹ ഫോട്ടോഗ്രാഫി' : 'Wedding Photography'}
-                </h4>
-                <p className="text-[10px] text-stone-400">
-                  {isMl ? 'ഇവന്റുകൾ, ക്രൂ & ആൽബങ്ങൾ' : 'Events, Crew, 4K & Albums'}
-                </p>
-              </div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-stone-400" />
+      <div className="bg-gradient-to-br from-stone-900 via-stone-950 to-stone-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-stone-800 relative overflow-hidden">
+        {/* Subtle decorative glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10">
+          <div className="flex items-center justify-between mb-3.5">
+            <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/15 border border-amber-500/30 px-3 py-1 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              {isMl ? 'സർവീസ് തിരഞ്ഞെടുത്ത് കൊട്ടേഷൻ ആരംഭിക്കുക' : 'Start a New Quote by Service'}
+            </span>
           </div>
 
-          {/* Option 2: Photoshoot */}
-          <div
-            onClick={() => onStartNewQuote('photoshoot')}
-            className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-rose-400/50 cursor-pointer transition flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            {/* Option 1: Wedding */}
+            <div
+              onClick={() => onStartNewQuote('wedding')}
+              className="p-4 rounded-2xl bg-stone-800/95 hover:bg-stone-800 border-2 border-stone-700 hover:border-amber-400 cursor-pointer transition-all duration-200 flex items-center justify-between group shadow-sm hover:shadow-md hover:scale-[1.01]"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-11 h-11 rounded-xl bg-amber-500 text-stone-950 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform">
+                  <Camera className="w-5 h-5 font-black" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-amber-300 transition-colors truncate">
+                    {isMl ? 'വിവാഹ ഫോട്ടോഗ്രാഫി' : 'Wedding Photography'}
+                  </h4>
+                  <p className="text-[11px] text-stone-300 font-medium mt-0.5 truncate">
+                    {isMl ? 'ഇവന്റുകൾ, ക്രൂ & ആൽബങ്ങൾ' : 'Events, Crew, 4K & Albums'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-xs sm:text-sm font-black text-white">
-                  {isMl ? 'പ്രത്യേക ഫോട്ടോഷൂട്ട്' : 'Special Photoshoots'}
-                </h4>
-                <p className="text-[10px] text-stone-400">
-                  {isMl ? 'ബർത്ത്ഡേ, ബേബി, മോഡൽ' : 'Birthday, Baby Shower, Model'}
-                </p>
-              </div>
+              <ArrowRight className="w-4 h-4 text-amber-400 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
             </div>
-            <ArrowRight className="w-4 h-4 text-stone-400" />
-          </div>
 
-          {/* Option 3: Other Services */}
-          <div
-            onClick={() => onStartNewQuote('other_services')}
-            className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-blue-400/50 cursor-pointer transition flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                <Utensils className="w-5 h-5" />
+            {/* Option 2: Photoshoot */}
+            <div
+              onClick={() => onStartNewQuote('photoshoot')}
+              className="p-4 rounded-2xl bg-stone-800/95 hover:bg-stone-800 border-2 border-stone-700 hover:border-rose-400 cursor-pointer transition-all duration-200 flex items-center justify-between group shadow-sm hover:shadow-md hover:scale-[1.01]"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-11 h-11 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-rose-300 transition-colors truncate">
+                    {isMl ? 'പ്രത്യേക ഫോട്ടോഷൂട്ട്' : 'Special Photoshoots'}
+                  </h4>
+                  <p className="text-[11px] text-stone-300 font-medium mt-0.5 truncate">
+                    {isMl ? 'ബർത്ത്ഡേ, ബേബി, മോഡൽ' : 'Birthday, Baby Shower, Model'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className="text-xs sm:text-sm font-black text-white">
-                  {isMl ? 'മറ്റ് വെഡ്ഡിംഗ് സർവീസുകൾ' : 'Other Wedding Services'}
-                </h4>
-                <p className="text-[10px] text-stone-400">
-                  {isMl ? 'സദ്യ, സ്റ്റേജ് ഡെക്കോർ, മേക്കപ്പ്' : 'Catering, Decor, Makeup & Cars'}
-                </p>
-              </div>
+              <ArrowRight className="w-4 h-4 text-rose-400 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
             </div>
-            <ArrowRight className="w-4 h-4 text-stone-400" />
+
+            {/* Option 3: Other Services */}
+            <div
+              onClick={() => onStartNewQuote('other_services')}
+              className="p-4 rounded-2xl bg-stone-800/95 hover:bg-stone-800 border-2 border-stone-700 hover:border-blue-400 cursor-pointer transition-all duration-200 flex items-center justify-between group shadow-sm hover:shadow-md hover:scale-[1.01]"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-11 h-11 rounded-xl bg-blue-500 text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform">
+                  <Utensils className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-blue-300 transition-colors truncate">
+                    {isMl ? 'മറ്റ് വെഡ്ഡിംഗ് സർവീസുകൾ' : 'Other Wedding Services'}
+                  </h4>
+                  <p className="text-[11px] text-stone-300 font-medium mt-0.5 truncate">
+                    {isMl ? 'സദ്യ, സ്റ്റേജ് ഡെക്കോർ, മേക്കപ്പ്' : 'Catering, Decor, Makeup & Cars'}
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-blue-400 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
+            </div>
           </div>
         </div>
       </div>

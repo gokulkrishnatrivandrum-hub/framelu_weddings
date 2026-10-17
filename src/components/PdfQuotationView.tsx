@@ -16,6 +16,7 @@ import {
 import { CalculationResult } from '@/utils/calculator';
 import { KERALA_EVENTS, DEFAULT_CUSTOM_PRINTS } from '@/constants/defaults';
 import { WhatsAppShareModal } from '@/components/WhatsAppShareModal';
+import { generateMasterPdfFromElement, GeneratedPdfResult } from '@/utils/pdfGenerator';
 import {
   Printer,
   Share2,
@@ -62,6 +63,7 @@ interface PdfQuotationViewProps {
   selectedServices?: SelectedOtherService[];
   appliedCoupon?: CouponCode | null;
   studioUser?: StudioUser | null;
+  isBackgroundRenderer?: boolean;
 }
 
 export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
@@ -84,6 +86,7 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
   selectedServices = lead.selectedServices || [],
   appliedCoupon,
   studioUser,
+  isBackgroundRenderer = false,
 }) => {
 
   const isMl = language === 'ml';
@@ -94,10 +97,11 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState(studioContact.email || 'framluweddings@gmail.com');
   const [copiedEmail, setCopiedEmail] = useState(false);
+  const [masterPdfResult, setMasterPdfResult] = useState<GeneratedPdfResult | null>(null);
 
   // Ensure pure print mode when quotation modal is active
   React.useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || isBackgroundRenderer) {
       document.body.classList.remove('is-printing-quotation');
       return;
     }
@@ -106,11 +110,11 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
     return () => {
       document.body.classList.remove('is-printing-quotation');
     };
-  }, [isOpen]);
+  }, [isOpen, isBackgroundRenderer]);
 
-  if (!isOpen) return null;
+  if (!isOpen && !isBackgroundRenderer) return null;
 
-  const quoteNo = lead.id || `LFB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const quoteNo = lead.id || `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const quoteDate = new Date().toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'long',
@@ -147,19 +151,24 @@ export const PdfQuotationView: React.FC<PdfQuotationViewProps> = ({
   const shootCompleteAmount = Math.round(grandTotalWithTax * 0.50);
   const finalDeliveryAmount = grandTotalWithTax - advanceAmount - shootCompleteAmount;
 
-  // Dynamic Studio Partner Branding vs Default Framelu Wedding Planner
-  const displayBrandName = studioUser?.studioName
-    ? studioUser.studioName.toUpperCase()
-    : 'LEFT FRAME BLUE WEDDING';
+  // Dynamic Studio Partner Branding vs Default Framelu Event Planner (Customer Version)
+  const effectiveStudio = studioUser || lead.studioBranding;
+  const isStudioVersion = Boolean(effectiveStudio?.studioName);
+
+  const displayBrandName = isStudioVersion
+    ? effectiveStudio!.studioName.toUpperCase()
+    : 'FRAMELU WEDDING COMPANY';
   const displaySubheader = isStandalone
     ? (shootDetails?.titleMl ? `${shootDetails.titleMl} (${shootDetails.titleEn || ''})` : isMl ? 'പ്രൊഫഷണൽ ഫോട്ടോഷൂട്ട് എസ്റ്റിമേറ്റ്' : 'Professional Photoshoot & Cinema Estimate')
-    : studioUser?.studioName
+    : isStudioVersion
     ? (isMl ? 'പ്രൊഫഷണൽ വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫിയും ഫിലിംസും' : 'Professional Wedding Photography, Cinematography & Keepsake Albums')
-    : (isMl ? 'പ്രീമിയം വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫിയും ഫിലിംസും' : 'Premium Wedding Photography, Cinematography & Keepsake Albums');
-  const displayLocation = studioUser?.place || studioUser?.address || studioContact.destination;
-  const displayPhone = studioUser?.phone || studioContact.phone || '+91 6238747722';
-  const displayEmail = studioUser?.email || studioContact.email || 'framluweddings@gmail.com';
-  const displaySignatory = studioUser?.studioName || 'LEFT FRAME BLUE WEDDING';
+    : (isMl ? 'പ്രീമിയം വെഡ്ഡിംഗ് ഫോട്ടോഗ്രാഫിയും ഫിലിംസും' : 'Premium Wedding Photography & Films');
+  const displayLocation = effectiveStudio?.place || effectiveStudio?.address || studioContact.destination;
+  const displayPhone = effectiveStudio?.phone || studioContact.phone || '+91 6238747722';
+  const displayEmail = effectiveStudio?.email || studioContact.email || 'frameluweddings@gmail.com';
+  const displaySignatory = isStudioVersion
+    ? effectiveStudio!.studioName
+    : 'FRAMELU WEDDING COMPANY';
   const targetWhatsappNumber = studioContact.whatsapp || '916238747722';
 
   const getSideName = (s: SideSelection) => {
@@ -303,262 +312,29 @@ Email: ${lead.email || 'N/A'}`;
 
     setIsDownloading(true);
     try {
-      if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
-        await document.fonts.ready;
-      }
+      const res = await generateMasterPdfFromElement(
+        docElement,
+        displayBrandName,
+        quoteNo,
+        lead.name || 'Customer',
+        displayPhone
+      );
+      setMasterPdfResult(res);
 
-      const { toPng } = await import('html-to-image');
-      const { jsPDF } = await import('jspdf');
-
-      // Capture rendered DOM as ultra HD image
-      const imgData = await toPng(docElement, {
-        pixelRatio: 2.5,
-        backgroundColor: '#ffffff',
-        cacheBust: true,
-        style: {
-          margin: '0',
-          boxShadow: 'none',
-          border: 'none',
-          borderRadius: '0',
-        },
-      });
-
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true,
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
-      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
-
-      // Standard printing margins on all sides (consistent with professional proposals)
-      const marginX = 12; // 12mm left & right margins
-      const marginTop = 12; // 12mm top margin on page 1
-      const marginBottom = 14; // 14mm bottom margin
-      const printableWidth = pdfWidth - marginX * 2; // 186mm
-      const headerHeight = 9; // 9mm for running header on page 2+
-      const printableHeightPage1 = pdfHeight - marginTop - marginBottom; // 271mm
-      const contentTopPage2 = marginTop + headerHeight; // 21mm
-      const printableHeightPage2 = pdfHeight - contentTopPage2 - marginBottom; // 262mm
-
-      const img = new Image();
-      img.src = imgData;
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = (e) => reject(e);
-      });
-
-      const imgWidth = img.naturalWidth || img.width;
-      const imgHeight = img.naturalHeight || img.height;
-      const totalRenderHeight = (imgHeight * printableWidth) / imgWidth;
-
-      // Draw original image onto full-size canvas for pixel inspection & slicing
-      const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width = imgWidth;
-      sourceCanvas.height = imgHeight;
-      const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
-      if (!sourceCtx) throw new Error('Could not get canvas context');
-      sourceCtx.drawImage(img, 0, 0);
-
-      // Helper function: Scan for a horizontal row of pixels that is completely white / free of dark text & borders
-      const findCleanCutY = (idealY: number, minY: number): number => {
-        const scanStart = Math.min(Math.round(idealY), imgHeight - 1);
-        const scanEnd = Math.max(Math.round(minY), 0);
-        let bestY = scanStart;
-        let minDarkPixels = Infinity;
-
-        // Scan backwards from ideal cut position upwards
-        for (let y = scanStart; y >= scanEnd; y -= 2) {
-          const rowData = sourceCtx.getImageData(0, y, imgWidth, 1).data;
-          let darkCount = 0;
-          // Sample every 4th pixel for speed
-          for (let x = 0; x < imgWidth; x += 4) {
-            const idx = x * 4;
-            const r = rowData[idx];
-            const g = rowData[idx + 1];
-            const b = rowData[idx + 2];
-            const a = rowData[idx + 3];
-            // If pixel is not white / light background (i.e. has text, icons or borders)
-            if (a > 180 && (r < 240 || g < 240 || b < 240)) {
-              darkCount++;
-            }
-          }
-          if (darkCount === 0) {
-            // Found a 100% clean white space row!
-            return y;
-          }
-          if (darkCount < minDarkPixels) {
-            minDarkPixels = darkCount;
-            bestY = y;
-          }
-        }
-        return bestY;
-      };
-
-      // Case 1: Fits directly on a single page at 100% scale
-      if (totalRenderHeight <= printableHeightPage1) {
-        pdf.addImage(imgData, 'PNG', marginX, marginTop, printableWidth, totalRenderHeight, undefined, 'FAST');
-        // Running footer
-        pdf.setFontSize(8);
-        pdf.setTextColor(150, 140, 130);
-        pdf.setDrawColor(220, 215, 210);
-        pdf.setLineWidth(0.2);
-        pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
-        pdf.text(`Page 1 of 1 • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
-        pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
-      }
-      // Case 2: Just slightly overflows (within 15%) - auto-fit cleanly to 1 page so it never awkwardly spills 2 lines to page 2!
-      else if (totalRenderHeight <= printableHeightPage1 * 1.15) {
-        const fitScale = printableHeightPage1 / totalRenderHeight;
-        const scaledWidth = printableWidth * fitScale;
-        const scaledHeight = totalRenderHeight * fitScale;
-        const offsetX = marginX + (printableWidth - scaledWidth) / 2;
-        pdf.addImage(imgData, 'PNG', offsetX, marginTop, scaledWidth, scaledHeight, undefined, 'FAST');
-        // Running footer
-        pdf.setFontSize(8);
-        pdf.setTextColor(150, 140, 130);
-        pdf.setDrawColor(220, 215, 210);
-        pdf.setLineWidth(0.2);
-        pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
-        pdf.text(`Page 1 of 1 • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
-        pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
-      }
-      // Case 3: Genuine multi-page proposal - smart anti-cut boundary detection & slice calculation
-      else {
-        // Collect all atomic cards/sections from the DOM that must never be sliced in half
-        const docRect = docElement.getBoundingClientRect();
-        const scaleY = imgHeight / docElement.offsetHeight;
-
-        const avoidNodes = Array.from(
-          docElement.querySelectorAll<HTMLElement>(
-            '.pdf-section, .break-inside-avoid, [data-pdf-block], .pdf-ceremony-item, .pdf-service-item, #printable-quotation-doc > div'
-          )
-        );
-
-        const avoidRanges = avoidNodes
-          .map((el) => {
-            const r = el.getBoundingClientRect();
-            return {
-              top: (r.top - docRect.top) * scaleY,
-              bottom: (r.bottom - docRect.top) * scaleY,
-              height: r.height * scaleY,
-            };
-          })
-          .filter((rg) => rg.height > 10)
-          .sort((a, b) => a.top - b.top);
-
-        // Pre-compute slices so that no element is cut and total page count is exact
-        const slices: { startY: number; endY: number; isFirstPage: boolean }[] = [];
-        let currentY = 0;
-
-        while (currentY < imgHeight - 15) {
-          const isFirst = slices.length === 0;
-          const availHeightMm = isFirst ? printableHeightPage1 : printableHeightPage2;
-          const maxCanvasPageHeight = (imgWidth * availHeightMm) / printableWidth;
-          const remainingHeight = imgHeight - currentY;
-
-          if (remainingHeight <= maxCanvasPageHeight) {
-            slices.push({ startY: currentY, endY: imgHeight, isFirstPage: isFirst });
-            break;
-          }
-
-          const targetCutY = currentY + maxCanvasPageHeight;
-          let idealCutY = targetCutY;
-
-          // Check if any element straddles targetCutY (starts before targetCutY and ends after targetCutY)
-          for (const range of avoidRanges) {
-            if (range.top < targetCutY - 10 && range.bottom > targetCutY + 10) {
-              // Only move cut point upwards if it leaves a reasonable amount on current page (>30%)
-              if (range.top > currentY + maxCanvasPageHeight * 0.3) {
-                idealCutY = Math.min(idealCutY, range.top);
-              }
-            }
-          }
-
-          // Scan for a 100% clean white space row at or above idealCutY
-          const cleanCutY = findCleanCutY(
-            idealCutY,
-            currentY + maxCanvasPageHeight * 0.3
-          );
-
-          // Safety check: ensure forward progress
-          const finalCutY = cleanCutY > currentY + 50 ? cleanCutY : targetCutY;
-
-          slices.push({ startY: currentY, endY: finalCutY, isFirstPage: isFirst });
-          currentY = finalCutY;
-        }
-
-        const totalPages = slices.length;
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width = imgWidth;
-        const sliceCtx = sliceCanvas.getContext('2d');
-
-        for (let i = 0; i < slices.length; i++) {
-          const slice = slices[i];
-          const pageNum = i + 1;
-          const sliceHeight = slice.endY - slice.startY;
-
-          if (pageNum > 1) {
-            pdf.addPage();
-          }
-
-          if (sliceCtx && sliceHeight > 0) {
-            sliceCanvas.height = sliceHeight;
-            sliceCtx.clearRect(0, 0, imgWidth, sliceHeight);
-            sliceCtx.drawImage(
-              img,
-              0,
-              slice.startY,
-              imgWidth,
-              sliceHeight,
-              0,
-              0,
-              imgWidth,
-              sliceHeight
-            );
-
-            const sliceData = sliceCanvas.toDataURL('image/png');
-            const sliceRenderHeight = (sliceHeight * printableWidth) / imgWidth;
-            const contentTop = slice.isFirstPage ? marginTop : contentTopPage2;
-
-            // Running header on page 2+
-            if (pageNum > 1) {
-              pdf.setFontSize(8);
-              pdf.setTextColor(120, 113, 108);
-              pdf.text(`${displayBrandName} • Official Proposal (${quoteNo})`, marginX, marginTop + 3);
-              pdf.setDrawColor(220, 215, 210);
-              pdf.setLineWidth(0.2);
-              pdf.line(marginX, marginTop + 5.5, pdfWidth - marginX, marginTop + 5.5);
-            }
-
-            // Clean, uncut content slice placed strictly within page margins
-            pdf.addImage(sliceData, 'PNG', marginX, contentTop, printableWidth, sliceRenderHeight, undefined, 'FAST');
-
-            // Running footer with page numbers and margin
-            pdf.setFontSize(8);
-            pdf.setTextColor(150, 140, 130);
-            pdf.setDrawColor(220, 215, 210);
-            pdf.setLineWidth(0.2);
-            pdf.line(marginX, pdfHeight - marginBottom + 2, pdfWidth - marginX, pdfHeight - marginBottom + 2);
-            pdf.text(`Page ${pageNum} of ${totalPages} • Tel: ${displayPhone}`, marginX, pdfHeight - marginBottom + 7);
-            pdf.text(`Official Proposal • Valid for 30 Days`, pdfWidth - marginX, pdfHeight - marginBottom + 7, { align: 'right' });
-          }
-        }
-      }
-
-      const safeBrand = (studioUser?.studioName || 'Framelu').replace(/[^a-zA-Z0-9-_]/g, '_');
-      const safeQuote = quoteNo.replace(/[^a-zA-Z0-9-_]/g, '_');
-      const safeName = (lead.name || 'Customer').replace(/[^a-zA-Z0-9-_]/g, '_');
-      pdf.save(`${safeBrand}_Quotation_${safeQuote}_${safeName}.pdf`);
+      const blobUrl = URL.createObjectURL(res.blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = blobUrl;
+      downloadLink.download = res.fileName;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
 
       setIsDownloading(false);
       setShowPostDownloadModal(true);
     } catch (primaryErr) {
-      console.warn('html-to-image export error, trying fallback:', primaryErr);
+      console.warn('generateMasterPdfFromElement failed, attempting canvas fallback:', primaryErr);
       try {
-        // Fallback to html2canvas if html-to-image is unsupported
         const html2canvas = (await import('html2canvas')).default;
         const { jsPDF } = await import('jspdf');
         const canvas = await html2canvas(docElement, {
@@ -586,10 +362,14 @@ Email: ${lead.email || 'N/A'}`;
         const xOffset = marginX + Math.max(0, (printableWidth - renderWidth) / 2);
         const yOffset = marginTop;
         pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderWidth, renderHeight, undefined, 'FAST');
-        const safeBrand = (studioUser?.studioName || 'Framelu').replace(/[^a-zA-Z0-9-_]/g, '_');
+        const safeBrand = (isStudioVersion ? effectiveStudio!.studioName : 'Framelu_wedding_Company').replace(/[^a-zA-Z0-9-_]/g, '_');
         const safeQuote = quoteNo.replace(/[^a-zA-Z0-9-_]/g, '_');
         const safeName = (lead.name || 'Customer').replace(/[^a-zA-Z0-9-_]/g, '_');
-        pdf.save(`${safeBrand}_Quotation_${safeQuote}_${safeName}.pdf`);
+        const fileName = `${safeBrand}_Quotation_${safeQuote}_${safeName}.pdf`;
+        const blob = pdf.output('blob');
+        const file = new File([blob], fileName, { type: 'application/pdf' });
+        setMasterPdfResult({ blob, file, fileName });
+        pdf.save(fileName);
         setIsDownloading(false);
         setShowPostDownloadModal(true);
       } catch (err) {
@@ -598,6 +378,31 @@ Email: ${lead.email || 'N/A'}`;
         window.print();
       }
     }
+  };
+
+  // Open WhatsApp Modal with the exact same pre-generated Master PDF
+  const handleOpenWhatsApp = async () => {
+    if (!masterPdfResult) {
+      const docElement = document.getElementById('printable-quotation-doc');
+      if (docElement) {
+        setIsDownloading(true);
+        try {
+          const res = await generateMasterPdfFromElement(
+            docElement,
+            displayBrandName,
+            quoteNo,
+            lead.name || 'Customer',
+            displayPhone
+          );
+          setMasterPdfResult(res);
+        } catch (e) {
+          console.warn('Pre-generating Master PDF for WhatsApp failed:', e);
+        } finally {
+          setIsDownloading(false);
+        }
+      }
+    }
+    setShowWhatsAppModal(true);
   };
 
   const handleCopyEmail = () => {
@@ -609,60 +414,71 @@ Email: ${lead.email || 'N/A'}`;
   return (
     <div
       id="quotation-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-900/80 backdrop-blur-sm overflow-y-auto"
+      className={
+        isBackgroundRenderer
+          ? 'fixed -left-[9999px] -top-[9999px] w-[850px] opacity-0 pointer-events-none select-none overflow-hidden z-[-9999]'
+          : 'fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-stone-900/80 backdrop-blur-sm overflow-y-auto'
+      }
+      aria-hidden={isBackgroundRenderer ? 'true' : undefined}
     >
       <div
         id="quotation-modal-card"
-        className="bg-stone-100 rounded-3xl max-w-4xl w-full shadow-2xl relative border border-stone-300 my-4 flex flex-col max-h-[94vh] overflow-hidden"
+        className={
+          isBackgroundRenderer
+            ? 'bg-white w-[800px]'
+            : 'bg-stone-100 rounded-3xl max-w-4xl w-full shadow-2xl relative border border-stone-300 my-4 flex flex-col max-h-[94vh] overflow-hidden'
+        }
       >
-        {/* Floating Top Header Toolbar (Hidden in Print) */}
-        <div className="shrink-0 flex flex-wrap items-center justify-between gap-2.5 p-3.5 sm:px-6 bg-stone-900 text-white border-b border-stone-800 print:hidden z-10">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-stone-200 text-xs font-bold transition"
-              title="Back to Customizer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>← {isMl ? 'ബാക്ക് & എഡിറ്റ് ചെയ്യുക' : 'Back & Edit Package'}</span>
-            </button>
-            <span className="hidden md:inline-block text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-              Official Quotation Preview
-            </span>
-          </div>
+        {/* Floating Top Header Toolbar (Hidden in Print and BackgroundRenderer) */}
+        {!isBackgroundRenderer && (
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2.5 p-3.5 sm:px-6 bg-stone-900 text-white border-b border-stone-800 print:hidden z-10">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onClose}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-stone-200 text-xs font-bold transition"
+                title="Back to Customizer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>← {isMl ? 'ബാക്ക് & എഡിറ്റ് ചെയ്യുക' : 'Back & Edit Package'}</span>
+              </button>
+              <span className="hidden md:inline-block text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                Official Quotation Preview
+              </span>
+            </div>
 
-          <div className="flex items-center flex-wrap gap-2">
-            {/* Direct PDF Download Button */}
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={isDownloading}
-              className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold py-2 px-3.5 rounded-xl text-xs transition shadow-sm"
-              title="Download high-resolution official PDF"
-            >
-              {isDownloading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{isMl ? 'ഡൗൺലോഡ് ചെയ്യുന്നു...' : 'Generating HD PDF...'}</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  <span>{isMl ? 'ഡൗൺലോഡ് PDF' : 'Download PDF'}</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center flex-wrap gap-2">
+              {/* Direct PDF Download Button */}
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={isDownloading}
+                className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold py-2 px-3.5 rounded-xl text-xs transition shadow-sm"
+                title="Download high-resolution official PDF"
+              >
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{isMl ? 'ഡൗൺലോഡ് ചെയ്യുന്നു...' : 'Generating HD PDF...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>{isMl ? 'ഡൗൺലോഡ് PDF' : 'Download PDF'}</span>
+                  </>
+                )}
+              </button>
 
-            {/* WhatsApp Enquiry Button */}
-            <button
-              type="button"
-              onClick={() => setShowWhatsAppModal(true)}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3.5 rounded-xl text-xs transition shadow-sm cursor-pointer"
-              title="Send enquiry with quotation via WhatsApp"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>{isMl ? 'WhatsApp വഴി അയക്കുക' : 'WhatsApp Share'}</span>
-            </button>
+              {/* WhatsApp Enquiry Button */}
+              <button
+                type="button"
+                onClick={handleOpenWhatsApp}
+                disabled={isDownloading}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 px-3.5 rounded-xl text-xs transition shadow-sm cursor-pointer"
+                title="Send enquiry with quotation via WhatsApp"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>{isMl ? 'WhatsApp വഴി അയക്കുക' : 'WhatsApp Share'}</span>
+              </button>
 
             {/* Email Enquiry Button */}
             <button
@@ -695,6 +511,7 @@ Email: ${lead.email || 'N/A'}`;
             </button>
           </div>
         </div>
+      )}
 
         {/* Scrollable Document Area */}
         <div
@@ -1411,7 +1228,7 @@ Email: ${lead.email || 'N/A'}`;
             <div className="pt-6 border-t-2 border-amber-500/20 bg-amber-50/70 p-4 sm:p-5 rounded-2xl border border-amber-200 text-center space-y-3 print:hidden shadow-xs">
               <div className="flex items-center justify-center gap-2 text-amber-950 font-black text-sm">
                 <Sparkles className="w-4 h-4 text-amber-600" />
-                <span>{isMl ? 'ഈ കൊട്ടേഷൻ കമ്പനിയിലേക്ക് അയച്ച് തീയതി ബുക്കിംഗ് ഉറപ്പാക്കാം' : 'Enquire directly with Framelu Wedding Company'}</span>
+                <span>{isMl ? 'ഈ കൊട്ടേഷൻ കമ്പനിയിലേക്ക് അയച്ച് തീയതി ബുക്കിംഗ് ഉറപ്പാക്കാം' : 'Enquire directly with Framelu wedding Company'}</span>
               </div>
               <p className="text-xs text-stone-600 max-w-xl mx-auto leading-relaxed">
                 {isMl
@@ -1432,8 +1249,9 @@ Email: ${lead.email || 'N/A'}`;
 
                 <button
                   type="button"
-                  onClick={() => setShowWhatsAppModal(true)}
-                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition cursor-pointer"
+                  onClick={handleOpenWhatsApp}
+                  disabled={isDownloading}
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl text-xs shadow-md transition cursor-pointer"
                 >
                   <Share2 className="w-4 h-4" />
                   <span>{isMl ? 'WhatsApp വഴി അയക്കുക' : 'Send via WhatsApp'}</span>
@@ -1451,12 +1269,55 @@ Email: ${lead.email || 'N/A'}`;
             </div>
           </div>
         </div>
+
+        {/* Mobile Sticky Action Bar (Quick 1-Tap Download & WhatsApp Share on Mobile) */}
+        {!isBackgroundRenderer && (
+          <div className="sm:hidden shrink-0 bg-stone-900/95 backdrop-blur-md p-3 px-4 border-t border-stone-800 flex items-center justify-between gap-2 z-20 pb-[max(env(safe-area-inset-bottom),12px)] print:hidden">
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+              className="flex-1 flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold py-2.5 px-3 rounded-xl text-xs shadow-md transition"
+            >
+              {isDownloading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{isMl ? 'ഡൗൺലോഡ്...' : 'Generating...'}</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isMl ? 'ഡൗൺലോഡ് PDF' : 'Download PDF'}</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenWhatsApp}
+              disabled={isDownloading}
+              className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2.5 px-3 rounded-xl text-xs shadow-md transition"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>{isMl ? 'WhatsApp അയക്കുക' : 'WhatsApp Share'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 text-stone-400 hover:text-white bg-stone-800 hover:bg-stone-700 rounded-xl transition"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
 
       {/* Post-Download Prompt Modal */}
-      {showPostDownloadModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-900/70 backdrop-blur-xs animate-fade-in print:hidden">
+      {!isBackgroundRenderer && showPostDownloadModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-stone-900/70 backdrop-blur-xs animate-fade-in print:hidden">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200 text-center relative">
             <button
               onClick={() => setShowPostDownloadModal(false)}
@@ -1476,7 +1337,7 @@ Email: ${lead.email || 'N/A'}`;
             <p className="text-xs sm:text-sm text-stone-600 mt-1.5 leading-relaxed">
               {isMl
                 ? 'നിങ്ങളുടെ കൊട്ടേഷൻ PDF ഡിവൈസിൽ സേവ് ആയിട്ടുണ്ട്. ഈ കൊട്ടേഷൻ കമ്പനിയിലേക്ക് അയച്ച് തീയതി ലഭ്യതയും ക്രൂവും ഉടൻ ഉറപ്പാക്കുക.'
-                : 'Your quotation PDF has been downloaded. You can now send this quotation to Framelu Event Planner via WhatsApp or Email to confirm crew availability.'}
+                : 'Your quotation PDF has been downloaded. You can now send this quotation to Framelu wedding Company via WhatsApp or Email to confirm crew availability.'}
             </p>
 
             <div className="mt-5 space-y-2.5">
@@ -1484,7 +1345,7 @@ Email: ${lead.email || 'N/A'}`;
                 type="button"
                 onClick={() => {
                   setShowPostDownloadModal(false);
-                  setShowWhatsAppModal(true);
+                  handleOpenWhatsApp();
                 }}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
               >
@@ -1517,8 +1378,8 @@ Email: ${lead.email || 'N/A'}`;
       )}
 
       {/* Email Enquiry Dialog Modal */}
-      {showEmailModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-stone-900/70 backdrop-blur-xs animate-fade-in print:hidden">
+      {!isBackgroundRenderer && showEmailModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-stone-900/70 backdrop-blur-xs animate-fade-in print:hidden">
           <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-stone-200 relative max-h-[92vh] flex flex-col overflow-hidden text-left">
             <div className="flex items-center justify-between pb-3 border-b border-stone-100 shrink-0">
               <div className="flex items-center gap-2">
@@ -1649,17 +1510,20 @@ Email: ${lead.email || 'N/A'}`;
       )}
 
       {/* WhatsApp Share Modal (Requirement 4) */}
-      <WhatsAppShareModal
-        isOpen={showWhatsAppModal}
-        onClose={() => setShowWhatsAppModal(false)}
-        lead={lead}
-        calculation={calculation}
-        userRole={studioUser ? 'studio' : 'customer'}
-        studioContact={studioContact}
-        onDownloadPdf={handleDownloadPdf}
-        isDownloadingPdf={isDownloading}
-        language={language}
-      />
+      {!isBackgroundRenderer && (
+        <WhatsAppShareModal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          lead={lead}
+          calculation={calculation}
+          userRole={studioUser ? 'studio' : 'customer'}
+          studioContact={studioContact}
+          onDownloadPdf={handleDownloadPdf}
+          isDownloadingPdf={isDownloading}
+          preGeneratedPdf={masterPdfResult}
+          language={language}
+        />
+      )}
     </div>
   );
 };

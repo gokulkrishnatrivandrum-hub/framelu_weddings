@@ -715,7 +715,13 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
       </div>
 
       {/* MOBILE STICKY BOTTOM DRAWER (Requirement 3 & 4) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-stone-200 shadow-2xl p-3">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-stone-200 shadow-[0_-8px_30px_rgb(0,0,0,0.12)] px-4 pt-2.5 pb-[max(env(safe-area-inset-bottom),14px)] transition-all">
+        {/* Mobile Drag/Expand Handle */}
+        <div
+          onClick={() => setIsMobileExpanded(!isMobileExpanded)}
+          className="w-12 h-1 rounded-full bg-stone-300 mx-auto mb-2 cursor-pointer hover:bg-stone-400 transition"
+          title={isMobileExpanded ? 'Collapse' : 'Expand pricing'}
+        />
         {/* Expanded Drawer on Mobile */}
         {isMobileExpanded && (
           <div className="max-h-80 overflow-y-auto mb-3 p-4 bg-stone-50 rounded-3xl border border-stone-200 text-xs space-y-3">
@@ -823,7 +829,7 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div
             onClick={() => setIsMobileExpanded(!isMobileExpanded)}
-            className="cursor-pointer flex-1"
+            className="cursor-pointer flex-1 py-1"
           >
             <div className="flex items-center gap-1 text-[11px] font-bold text-amber-700">
               <span>{isMl ? 'എസ്റ്റിമേറ്റ് തുക' : 'Total Estimate'}</span>
@@ -833,7 +839,7 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
                 <ChevronUp className="w-3.5 h-3.5" />
               )}
             </div>
-            <div className="text-xl font-black text-stone-900 leading-tight flex items-baseline gap-1.5">
+            <div className="text-xl sm:text-2xl font-black text-stone-900 leading-tight flex items-baseline gap-1.5">
               <span>₹{finalPriceAfterDiscount.toLocaleString('en-IN')}</span>
               {appliedCoupon && (
                 <span className="text-[10px] line-through text-stone-400 font-normal">
@@ -847,10 +853,10 @@ export const LiveStickyPricing: React.FC<LiveStickyPricingProps> = ({
             type="button"
             onClick={handleGetQuotationCtaClick}
             disabled={calculation.totalPrice === 0}
-            className="bg-gradient-to-r from-amber-600 via-rosewood-600 to-amber-700 disabled:opacity-50 text-white font-black py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-2 text-xs"
+            className="bg-gradient-to-r from-amber-600 via-amber-700 to-rosewood-700 hover:from-amber-700 hover:to-amber-800 disabled:opacity-50 text-white font-black py-3 px-4 sm:px-5 rounded-2xl shadow-lg shadow-amber-600/30 active:scale-95 transition-all flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer shrink-0"
           >
-            <FileText className="w-4 h-4" />
-            <span>{isMl ? 'PDF കൊട്ടേഷൻ' : 'Get PDF Quote'}</span>
+            <Sparkles className="w-4 h-4 text-amber-200" />
+            <span>{isMl ? '⚡ PDF കൊട്ടേഷൻ' : '⚡ Instant Quote'}</span>
           </button>
         </div>
       </div>

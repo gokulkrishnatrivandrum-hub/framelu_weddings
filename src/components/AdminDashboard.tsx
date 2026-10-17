@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   PriceRates,
   CustomerLead,
@@ -13,11 +13,15 @@ import {
   GalleryProject,
   CouponCode,
   PhotoshootConfig,
+  CustomerUser,
+  StudioUser,
+  RegisteredLoginUser,
 } from '@/types';
 import {
   Shield,
   Sliders,
   Users,
+  User,
   Tag,
   Save,
   RotateCcw,
@@ -63,6 +67,9 @@ import {
   Edit2,
   Ticket,
   ChevronDown,
+  KeyRound,
+  ShieldCheck,
+  Building2,
 } from 'lucide-react';
 import {
   DEFAULT_RATES,
@@ -95,6 +102,9 @@ import {
   saveGalleryProjectsToCloud,
   saveCouponsToCloud,
   savePhotoshootsToCloud,
+  deleteCustomerUserFromCloud,
+  deleteStudioPartnerFromCloud,
+  bulkDeleteUsersFromCloud,
 } from '@/lib/firestoreSync';
 
 // Reusable Image Upload & Device File Browser Component
@@ -267,6 +277,132 @@ export const getLeadStatusConfig = (status?: string, isMl: boolean = true) => {
   }
 };
 
+// Helper to resolve complete events & deliverables plan for any lead (handles custom, synthetic, gold, royal)
+export const resolvePlanForLead = (lead: CustomerLead) => {
+  const hasGroomEvents = lead.groomEvents && Object.values(lead.groomEvents).some((e) => e && (e as any).enabled);
+  const hasBrideEvents = lead.brideEvents && Object.values(lead.brideEvents).some((e) => e && (e as any).enabled);
+  const hasDeliverables = lead.deliverables && (
+    ((lead.deliverables.mainAlbumsCount || 0) > 0) ||
+    lead.deliverables.fullLengthVideo ||
+    lead.deliverables.highlightVideo ||
+    (lead.deliverables as any).albumIncluded
+  );
+
+  const price = Number(lead.totalPrice) || 95000;
+  const isRoyal = price >= 140000;
+  const isGold = price >= 80000;
+
+  // 1. Groom Events
+  let groomEvents = lead.groomEvents;
+  if (!hasGroomEvents) {
+    groomEvents = {
+      wedding_day: {
+        enabled: true,
+        venue: lead.venueLocation || lead.place || 'Wedding Hall',
+        date: lead.weddingDate || '2026-10-30',
+        traditionalPhotographers: 1,
+        traditionalVideographers: 1,
+        candidPhotographers: isGold ? 1 : 0,
+        candidVideographers: isGold ? 1 : 0,
+        drone: isGold,
+        youtubeLive: isRoyal,
+        auditoriumLive: isRoyal,
+        photoLivePrinting: isRoyal,
+      },
+      reception: {
+        enabled: isGold,
+        venue: lead.venueLocation || lead.place || 'Reception Hall',
+        date: lead.weddingDate || '2026-10-30',
+        traditionalPhotographers: 1,
+        traditionalVideographers: 1,
+        candidPhotographers: 0,
+        candidVideographers: 0,
+        drone: isRoyal,
+        youtubeLive: false,
+        auditoriumLive: false,
+        photoLivePrinting: false,
+      },
+      ...(isRoyal
+        ? {
+            pre_wedding: {
+              enabled: true,
+              venue: 'Scenic Outdoor',
+              date: '',
+              traditionalPhotographers: 0,
+              traditionalVideographers: 0,
+              candidPhotographers: 1,
+              candidVideographers: 1,
+              drone: false,
+              youtubeLive: false,
+              auditoriumLive: false,
+              photoLivePrinting: false,
+            },
+          }
+        : {}),
+    } as any;
+  }
+
+  // 2. Bride Events
+  let brideEvents = lead.brideEvents;
+  if (!hasBrideEvents && (lead.side === 'both' || lead.side === 'bride')) {
+    brideEvents = {
+      wedding_day: {
+        enabled: true,
+        venue: lead.venueLocation || lead.place || 'Auditorium',
+        date: lead.weddingDate || '2026-10-30',
+        traditionalPhotographers: 1,
+        traditionalVideographers: 1,
+        candidPhotographers: isGold ? 1 : 0,
+        candidVideographers: isGold ? 1 : 0,
+        drone: isGold,
+        youtubeLive: false,
+        auditoriumLive: false,
+        photoLivePrinting: false,
+      },
+    } as any;
+  }
+
+  // 3. Deliverables
+  let deliverables = lead.deliverables;
+  if (!hasDeliverables) {
+    deliverables = {
+      videoQuality: isGold ? '4k' : 'hd',
+      fullLengthVideo: true,
+      highlightVideo: isGold,
+      teaserVideo: true,
+      reelsCount: isRoyal ? 4 : isGold ? 2 : 1,
+      penDriveCount: 1,
+      penDriveBoxCount: isGold ? 1 : 0,
+      mainAlbumsCount: isRoyal ? 2 : 1,
+      mainAlbumSheets: isRoyal ? 45 : isGold ? 35 : 30,
+      albumPaperType: isRoyal ? 'full_glass' : isGold ? 'glass' : 'normal',
+      frames_8x12: isGold ? 0 : 2,
+      frames_18x12: isGold ? 1 : 0,
+      frames_15x20: isRoyal ? 1 : 0,
+      miniAlbumsCount: isRoyal ? 2 : 0,
+      photoMugsCount: 0,
+      wallCalendarsCount: 0,
+      tableTopCalendarsCount: 0,
+      gradedPhotosCount: isRoyal ? 200 : 100,
+    } as any;
+  }
+
+  const packageName = lead.photoshootDetails?.title || (
+    isRoyal
+      ? 'Royal Diamond Grand Heritage Package (റോയൽ ഡയമണ്ട് ഗ്രാൻഡ് പാക്കേജ്)'
+      : isGold
+      ? 'Gold Cinematic Signature Package (ഗോൾഡ് സിനിമാറ്റിക് സിഗ്നേച്ചർ പാക്കേജ്)'
+      : 'Silver Classic Wedding Package (സിൽവർ ക്ലാസിക് വെഡ്ഡിംഗ് പാക്കേജ്)'
+  );
+
+  return {
+    groomEvents: groomEvents as Record<string, any>,
+    brideEvents: brideEvents as Record<string, any> | undefined,
+    deliverables: deliverables as any,
+    packageName,
+  };
+};
+
 interface AdminDashboardProps {
   rates: PriceRates;
   setRates: React.Dispatch<React.SetStateAction<PriceRates>>;
@@ -290,7 +426,12 @@ interface AdminDashboardProps {
   setCoupons?: React.Dispatch<React.SetStateAction<CouponCode[]>>;
   photoshoots?: PhotoshootConfig[];
   setPhotoshoots?: React.Dispatch<React.SetStateAction<PhotoshootConfig[]>>;
+  customerUsers?: CustomerUser[];
+  setCustomerUsers?: React.Dispatch<React.SetStateAction<CustomerUser[]>>;
+  studioPartners?: StudioUser[];
+  setStudioPartners?: React.Dispatch<React.SetStateAction<StudioUser[]>>;
   onCloseAdmin?: () => void;
+  onLogoutUser?: (userIdOrEmail: string) => void;
   language?: 'en' | 'ml';
 }
 
@@ -318,12 +459,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   setCoupons,
   photoshoots = Object.values(DEFAULT_PHOTOSHOOTS),
   setPhotoshoots,
+  customerUsers = [],
+  setCustomerUsers,
+  studioPartners = [],
+  setStudioPartners,
   onCloseAdmin,
+  onLogoutUser,
   language = 'ml',
 }) => {
   const isMl = language === 'ml';
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'rates' | 'prints' | 'leads' | 'contact' | 'offers' | 'boards' | 'services' | 'gallery' | 'coupons' | 'photoshoots'>('leads');
+  const [activeAdminTab, setActiveAdminTab] = useState<'rates' | 'prints' | 'leads' | 'logins' | 'contact' | 'offers' | 'boards' | 'services' | 'gallery' | 'coupons' | 'photoshoots'>('leads');
   const [tempRates, setTempRates] = useState<PriceRates>(rates);
   const [tempContact, setTempContact] = useState<StudioContactConfig>(studioContact);
   const [tempCustomPrints, setTempCustomPrints] = useState<CustomPrintItem[]>(customPrintItems);
@@ -372,6 +518,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
   const [editingService, setEditingService] = useState<OtherServicePackage | null>(null);
   const [isEditServiceModalOpen, setIsEditServiceModalOpen] = useState(false);
+  const [editingOffer, setEditingOffer] = useState<PromoOffer | null>(null);
+  const [isEditOfferModalOpen, setIsEditOfferModalOpen] = useState(false);
+  const [editingBoard, setEditingBoard] = useState<HighlightBoard | null>(null);
+  const [isEditBoardModalOpen, setIsEditBoardModalOpen] = useState(false);
   const [newCoupon, setNewCoupon] = useState<Partial<CouponCode>>({
     code: '',
     discountPercentage: 10,
@@ -384,6 +534,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [couponTypeFilter, setCouponTypeFilter] = useState<'all' | 'public' | 'private'>('all');
   const [savedSuccess, setSavedSuccess] = useState('');
   const [selectedLead, setSelectedLead] = useState<CustomerLead | null>(null);
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
 
@@ -417,7 +568,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [placeFilter, setPlaceFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [userFilter, setUserFilter] = useState<string>('all');
   const [placeSearchQuery, setPlaceSearchQuery] = useState<string>('');
+
+  // Login Details & User Portal States
+  const [loginRoleFilter, setLoginRoleFilter] = useState<'all' | 'studio' | 'customer'>('all');
+  const [loginSearchQuery, setLoginSearchQuery] = useState<string>('');
+  const [selectedLoginUserIds, setSelectedLoginUserIds] = useState<string[]>([]);
+  const [deletedLoginUserIds, setDeletedLoginUserIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('framlu_deleted_login_ids');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [inspectingLoginUser, setInspectingLoginUser] = useState<RegisteredLoginUser | null>(null);
+  const [isInspectLoginUserModalOpen, setIsInspectLoginUserModalOpen] = useState(false);
+  const [deleteConfirmLoginUser, setDeleteConfirmLoginUser] = useState<RegisteredLoginUser | null>(null);
 
   // Other Services Filter & Add Form State
   const [serviceCategoryFilter, setServiceCategoryFilter] = useState<string>('all');
@@ -509,6 +680,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setTempGalleryProjects(galleryProjects);
     }
   }, [galleryProjects]);
+
+  // Close modals when Escape key is pressed
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedLead(null);
+        setIsPlanModalOpen(false);
+        setIsPdfModalOpen(false);
+        setIsWhatsAppModalOpen(false);
+      }
+    };
+    if (selectedLead || isPlanModalOpen || isPdfModalOpen || isWhatsAppModalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedLead, isPlanModalOpen, isPdfModalOpen, isWhatsAppModalOpen]);
 
   const showNotification = (msg: string) => {
     setSavedSuccess(msg);
@@ -970,6 +1159,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleStartEditOffer = (offer: PromoOffer) => {
+    setEditingOffer({ ...offer });
+    setIsEditOfferModalOpen(true);
+  };
+
+  const handleSaveEditedOffer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOffer) return;
+    const updated = offers.map((o) => (o.id === editingOffer.id ? editingOffer : o));
+    setOffers(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lumina_wedding_offers', JSON.stringify(updated));
+      localStorage.setItem('framlu_wedding_offers', JSON.stringify(updated));
+    }
+    await savePromoOffersToCloud(updated);
+    setIsEditOfferModalOpen(false);
+    setEditingOffer(null);
+    showNotification(isMl ? 'ഓഫർ വിവരങ്ങൾ വിജയകരമായി അപ്ഡേറ്റ് ചെയ്തു!' : 'Offer updated successfully!');
+  };
+
   const handleAddBoard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBoard.title?.trim()) {
@@ -1048,6 +1257,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await saveHighlightBoardsToCloud(updated);
       showNotification(isMl ? 'പാക്കേജ് ബോർഡ് നീക്കം ചെയ്തു' : 'Package board deleted');
     }
+  };
+
+  const handleStartEditBoard = (board: HighlightBoard) => {
+    setEditingBoard({ ...board });
+    setIsEditBoardModalOpen(true);
+  };
+
+  const handleSaveEditedBoard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBoard) return;
+    const updated = highlightBoards.map((b) => (b.id === editingBoard.id ? editingBoard : b));
+    setHighlightBoards(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lumina_wedding_boards', JSON.stringify(updated));
+      localStorage.setItem('framlu_wedding_boards', JSON.stringify(updated));
+    }
+    await saveHighlightBoardsToCloud(updated);
+    setIsEditBoardModalOpen(false);
+    setEditingBoard(null);
+    showNotification(isMl ? 'ഹൈലൈറ്റ് ബോർഡ് വിവരങ്ങൾ വിജയകരമായി അപ്ഡേറ്റ് ചെയ്തു!' : 'Highlight board updated successfully!');
   };
 
   // Category Handlers (Add new category with photo file browse)
@@ -1492,12 +1721,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const loc = (lead.place || lead.address || '').toLowerCase();
     const matchesPlace =
       placeFilter === 'all' || loc.includes(placeFilter.toLowerCase());
+    const q = placeSearchQuery.trim().toLowerCase();
     const matchesSearch =
-      !placeSearchQuery.trim() ||
-      lead.name.toLowerCase().includes(placeSearchQuery.toLowerCase()) ||
-      lead.phone.includes(placeSearchQuery) ||
-      loc.includes(placeSearchQuery.toLowerCase()) ||
-      (lead.studioBranding?.studioName || '').toLowerCase().includes(placeSearchQuery.toLowerCase());
+      !q ||
+      (lead.ownerName || '').toLowerCase().includes(q) ||
+      (lead.ownerEmail || '').toLowerCase().includes(q) ||
+      (lead.createdByName || '').toLowerCase().includes(q) ||
+      (lead.createdByEmail || '').toLowerCase().includes(q) ||
+      (lead.email || '').toLowerCase().includes(q) ||
+      (lead.userEmail || '').toLowerCase().includes(q) ||
+      (lead.id || '').toLowerCase().includes(q) ||
+      lead.name.toLowerCase().includes(q) ||
+      lead.phone.includes(q) ||
+      loc.includes(q) ||
+      (lead.studioBranding?.studioName || '').toLowerCase().includes(q) ||
+      (lead.studioBranding?.ownerName || '').toLowerCase().includes(q);
     const matchesStatus =
       statusFilter === 'all' || (lead.status || 'New') === statusFilter;
     const isStudio = lead.source === 'studio' || !!lead.studioBranding;
@@ -1505,7 +1743,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       leadSourceFilter === 'all' ||
       (leadSourceFilter === 'studio' && isStudio) ||
       (leadSourceFilter === 'customer' && !isStudio);
-    return matchesPlace && matchesSearch && matchesStatus && matchesSource;
+    const cleanUserFilter = (userFilter || 'all').toLowerCase().trim();
+    const cleanUserDigits = cleanUserFilter.replace(/\D/g, '');
+    const matchesUser =
+      cleanUserFilter === 'all' ||
+      (lead.ownerEmail || '').toLowerCase().trim() === cleanUserFilter ||
+      (lead.createdByEmail || '').toLowerCase().trim() === cleanUserFilter ||
+      (lead.email || '').toLowerCase().trim() === cleanUserFilter ||
+      (lead.userEmail || '').toLowerCase().trim() === cleanUserFilter ||
+      (lead.userId || '').toLowerCase().trim() === cleanUserFilter ||
+      (cleanUserDigits.length >= 10 && (lead.phone || lead.userPhone || '').replace(/\D/g, '').slice(-10) === cleanUserDigits.slice(-10));
+
+    return matchesPlace && matchesSearch && matchesStatus && matchesSource && matchesUser;
   });
 
   const toggleSelectLead = (id: string) => {
@@ -1524,6 +1773,787 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } else {
       setSelectedLeadIds(allDisplayedKeys);
     }
+  };
+
+  // Aggregate all registered login users (Studio + Customer + Local Cache + Leads)
+  const allLoginUsers: RegisteredLoginUser[] = useMemo(() => {
+    const list: RegisteredLoginUser[] = [];
+    const seenIds = new Set<string>();
+    const seenEmails = new Set<string>();
+    const seenPhones = new Set<string>();
+
+    const registerUser = (u: RegisteredLoginUser) => {
+      const emailClean = (u.email || '').toLowerCase().trim();
+      const phoneClean = (u.phone || '').replace(/\D/g, '');
+      const docId = u.id || '';
+      const uId = (u.userId || '').toLowerCase().trim();
+
+      // STRICT BLACKLIST: If user was deleted by admin, never show or resurrect them
+      if (
+        (docId && deletedLoginUserIds.includes(docId)) ||
+        (emailClean && deletedLoginUserIds.includes(emailClean)) ||
+        (phoneClean && (deletedLoginUserIds.includes(phoneClean) || (phoneClean.length >= 10 && deletedLoginUserIds.includes(phoneClean.slice(-10))))) ||
+        (uId && deletedLoginUserIds.includes(uId))
+      ) {
+        return;
+      }
+
+      if (docId && seenIds.has(docId)) return;
+      if (emailClean && seenEmails.has(emailClean)) return;
+      if (phoneClean && phoneClean.length >= 10 && seenPhones.has(phoneClean.slice(-10))) return;
+
+      if (docId) seenIds.add(docId);
+      if (emailClean) seenEmails.add(emailClean);
+      if (phoneClean && phoneClean.length >= 10) seenPhones.add(phoneClean.slice(-10));
+      list.push(u);
+    };
+
+    // 1. Studio Partners from props
+    (studioPartners || []).forEach((st, idx) => {
+      const emailClean = (st.email || '').toLowerCase().trim();
+      const phoneClean = (st.phone || '').replace(/\D/g, '');
+      const docId = st.id || (emailClean ? `STUDIO-${emailClean.replace(/[^a-z0-9]/g, '_')}` : `STUDIO-${phoneClean}`);
+      const userId = emailClean ? emailClean.split('@')[0] : `studio_${phoneClean.slice(-4)}`;
+
+      registerUser({
+        id: docId,
+        userId: userId,
+        role: 'studio',
+        name: st.ownerName || st.studioName || `Studio Partner #${idx + 1}`,
+        ownerName: st.ownerName,
+        studioName: st.studioName || 'Studio Partner',
+        phone: st.phone || phoneClean,
+        email: st.email || '',
+        address: st.address || st.place || 'Kerala',
+        place: st.place || 'Kayamkulam',
+        loginCount: typeof st.loginCount === 'number' && st.loginCount > 0 ? st.loginCount : 1,
+        registeredAt: st.registeredAt || '2026-10-15T10:00:00.000Z',
+        lastLoginAt: st.lastLoginAt || st.registeredAt || new Date().toISOString(),
+        authMethod: st.authMethod || (st.email ? 'google' : 'phone'),
+        verified: st.verified ?? true,
+        status: st.status || 'active',
+        rawDoc: st,
+      });
+    });
+
+    // 2. Customer Users from props
+    (customerUsers || []).forEach((cu, idx) => {
+      const emailClean = (cu.email || '').toLowerCase().trim();
+      const phoneClean = (cu.phone || '').replace(/\D/g, '');
+      const docId = cu.id || (emailClean ? `CUST-${emailClean.replace(/[^a-z0-9]/g, '_')}` : `CUST-${cu.username || phoneClean}`);
+      const userId = cu.username || cu.userId || (emailClean ? emailClean.split('@')[0] : `user_${phoneClean.slice(-4)}`);
+
+      registerUser({
+        id: docId,
+        userId: userId,
+        role: 'customer',
+        name: cu.name || `Customer User #${idx + 1}`,
+        phone: cu.phone || phoneClean,
+        email: cu.email || '',
+        address: cu.address || cu.place || 'Kerala',
+        place: cu.place || 'കായംകുളം',
+        loginCount: typeof cu.loginCount === 'number' && cu.loginCount > 0 ? cu.loginCount : 1,
+        registeredAt: cu.registeredAt || '2026-10-15T10:00:00.000Z',
+        lastLoginAt: cu.lastLoginAt || cu.registeredAt || new Date().toISOString(),
+        authMethod: cu.authMethod || (cu.email ? 'google' : 'phone'),
+        verified: cu.verified ?? true,
+        status: cu.status || 'active',
+        rawDoc: cu,
+      });
+    });
+
+    // 3. LocalStorage Caches
+    if (typeof window !== 'undefined') {
+      try {
+        const cachedCustRaw = localStorage.getItem('framlu_customer_users_cache');
+        if (cachedCustRaw) {
+          const parsed = JSON.parse(cachedCustRaw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((cu, idx) => {
+              const emailClean = (cu.email || '').toLowerCase().trim();
+              const phoneClean = (cu.phone || '').replace(/\D/g, '');
+              const docId = cu.id || (emailClean ? `CUST-${emailClean.replace(/[^a-z0-9]/g, '_')}` : `CUST-${cu.username || phoneClean}`);
+              const userId = cu.username || cu.userId || (emailClean ? emailClean.split('@')[0] : `user_${phoneClean.slice(-4)}`);
+              registerUser({
+                id: docId,
+                userId: userId,
+                role: 'customer',
+                name: cu.name || `Customer User #${idx + 1}`,
+                phone: cu.phone || phoneClean,
+                email: cu.email || '',
+                address: cu.address || cu.place || 'Kerala',
+                place: cu.place || 'കായംകുളം',
+                loginCount: cu.loginCount || 1,
+                registeredAt: cu.registeredAt || new Date().toISOString(),
+                lastLoginAt: cu.lastLoginAt || cu.registeredAt || new Date().toISOString(),
+                authMethod: cu.authMethod || (cu.email ? 'google' : 'phone'),
+                verified: cu.verified ?? true,
+                status: cu.status || 'active',
+                rawDoc: cu,
+              });
+            });
+          }
+        }
+
+        const cachedStudRaw = localStorage.getItem('framlu_studio_partners_cache');
+        if (cachedStudRaw) {
+          const parsed = JSON.parse(cachedStudRaw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((st, idx) => {
+              const emailClean = (st.email || '').toLowerCase().trim();
+              const phoneClean = (st.phone || '').replace(/\D/g, '');
+              const docId = st.id || (emailClean ? `STUDIO-${emailClean.replace(/[^a-z0-9]/g, '_')}` : `STUDIO-${phoneClean}`);
+              const userId = emailClean ? emailClean.split('@')[0] : `studio_${phoneClean.slice(-4)}`;
+              registerUser({
+                id: docId,
+                userId: userId,
+                role: 'studio',
+                name: st.ownerName || st.studioName || `Studio Partner #${idx + 1}`,
+                ownerName: st.ownerName,
+                studioName: st.studioName || 'Studio Partner',
+                phone: st.phone || phoneClean,
+                email: st.email || '',
+                address: st.address || st.place || 'Kerala',
+                place: st.place || 'Kayamkulam',
+                loginCount: st.loginCount || 1,
+                registeredAt: st.registeredAt || new Date().toISOString(),
+                lastLoginAt: st.lastLoginAt || st.registeredAt || new Date().toISOString(),
+                authMethod: st.authMethod || (st.email ? 'google' : 'phone'),
+                verified: st.verified ?? true,
+                status: st.status || 'active',
+                rawDoc: st,
+              });
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 4. Any registered leads/clients who created quotations
+    (leads || []).forEach((l) => {
+      const emailClean = (l.ownerEmail || l.createdByEmail || l.userEmail || l.email || '').toLowerCase().trim();
+      const phoneClean = (l.phone || l.userPhone || l.createdByPhone || '').replace(/\D/g, '');
+      const name = l.ownerName || l.createdByName || l.name;
+      if (!name || (!emailClean && phoneClean.length < 10)) return;
+      if (l.id === 'FWC-QUOTE' || l.id === 'FWC-2026-DUMMY') return;
+
+      const isStudio = l.createdByRole === 'studio' || l.source === 'studio';
+      const docId = isStudio
+        ? (emailClean ? `STUDIO-${emailClean.replace(/[^a-z0-9]/g, '_')}` : `STUDIO-${phoneClean}`)
+        : (emailClean ? `CUST-${emailClean.replace(/[^a-z0-9]/g, '_')}` : `CUST-${phoneClean}`);
+      const userId = l.userId || l.createdByUserId || (emailClean ? emailClean.split('@')[0] : `user_${phoneClean.slice(-4)}`);
+
+      registerUser({
+        id: docId,
+        userId: userId,
+        role: isStudio ? 'studio' : 'customer',
+        name: name,
+        ownerName: isStudio ? name : undefined,
+        studioName: isStudio ? (l.studioBranding?.studioName || name) : undefined,
+        phone: phoneClean,
+        email: emailClean,
+        address: l.address || l.venueLocation || 'Kerala',
+        place: l.place || 'കായംകുളം',
+        loginCount: 1,
+        registeredAt: l.createdAt || new Date().toISOString(),
+        lastLoginAt: l.lastEditedAt || l.createdAt || new Date().toISOString(),
+        authMethod: emailClean ? 'google' : 'phone',
+        verified: true,
+        status: 'active',
+        rawDoc: l,
+      });
+    });
+
+    return list.sort((a, b) => new Date(b.lastLoginAt).getTime() - new Date(a.lastLoginAt).getTime());
+  }, [customerUsers, studioPartners, leads, deletedLoginUserIds]);
+
+  // Helper to retrieve all quotations created by a specific registered user ID
+  const getUserQuotations = React.useCallback(
+    (u: RegisteredLoginUser | null): CustomerLead[] => {
+      if (!u) return [];
+      const uEmail = (u.email || '').trim().toLowerCase();
+      const uPhone = (u.phone || '').replace(/\D/g, '').slice(-10);
+      const uUserId = (u.userId || '').trim().toLowerCase();
+      const uName = (u.name || '').trim().toLowerCase();
+
+      return (leads || []).filter((l) => {
+        const lEmail = (l.ownerEmail || l.createdByEmail || l.userEmail || l.email || '').trim().toLowerCase();
+        const lPhone = (l.phone || l.userPhone || '').replace(/\D/g, '').slice(-10);
+        const lUserId = (l.userId || '').trim().toLowerCase();
+        const lName = (l.ownerName || l.createdByName || l.name || '').trim().toLowerCase();
+
+        if (uEmail && lEmail && uEmail === lEmail) return true;
+        if (uPhone && lPhone && uPhone === lPhone) return true;
+        if (uUserId && lUserId && uUserId === lUserId) return true;
+        if (uName && lName && uName === lName) return true;
+        return false;
+      });
+    },
+    [leads]
+  );
+
+  // Filtered Login Users for Display
+  const displayedLoginUsers = useMemo(() => {
+    return allLoginUsers.filter((u) => {
+      if (loginRoleFilter !== 'all' && u.role !== loginRoleFilter) {
+        return false;
+      }
+      if (loginSearchQuery.trim()) {
+        const q = loginSearchQuery.toLowerCase().trim();
+        const match =
+          u.name.toLowerCase().includes(q) ||
+          u.phone.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q) ||
+          u.address.toLowerCase().includes(q) ||
+          u.place.toLowerCase().includes(q) ||
+          u.userId.toLowerCase().includes(q) ||
+          (u.studioName && u.studioName.toLowerCase().includes(q)) ||
+          (u.ownerName && u.ownerName.toLowerCase().includes(q));
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [allLoginUsers, loginRoleFilter, loginSearchQuery]);
+
+  const toggleSelectLoginUser = (id: string) => {
+    setSelectedLoginUserIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllLoginUsers = () => {
+    if (displayedLoginUsers.length === 0) return;
+    const allDisplayedIds = displayedLoginUsers.map((u) => u.id);
+    const isAllSelected =
+      allDisplayedIds.length > 0 && allDisplayedIds.every((id) => selectedLoginUserIds.includes(id));
+    if (isAllSelected) {
+      setSelectedLoginUserIds([]);
+    } else {
+      setSelectedLoginUserIds(allDisplayedIds);
+    }
+  };
+
+  // Delete Individual User ID
+  const handleDeleteLoginUser = async (user: RegisteredLoginUser) => {
+    const confirmMsg = isMl
+      ? `"${user.name}" (${user.userId}) എന്ന ഐഡി ഡിലീറ്റ് ചെയ്യണോ?\n\nഡിലീറ്റ് ചെയ്താൽ, ഈ വ്യക്തി പിന്നീട് ലോഗിൻ ചെയ്യുമ്പോൾ ആദ്യത്തെ ഇനിഷ്യൽ ലോഗിൻ പോലെ പേര്, മൊബൈൽ നമ്പർ, വിലാസം എന്നിവ നൽകി വീണ്ടും രജിസ്റ്റർ ചെയ്യേണ്ടി വരും.`
+      : `Delete user "${user.name}" (${user.userId})?\n\nOnce deleted, when this user attempts to log in again, they will be prompted with the initial registration form to re-register.`;
+
+    if (window.confirm(confirmMsg)) {
+      const identifiersToBlacklist = [
+        user.id,
+        user.email ? user.email.toLowerCase().trim() : '',
+        user.phone ? user.phone.replace(/\D/g, '') : '',
+        user.phone && user.phone.replace(/\D/g, '').length >= 10 ? user.phone.replace(/\D/g, '').slice(-10) : '',
+        user.userId ? user.userId.toLowerCase().trim() : '',
+      ].filter(Boolean);
+
+      // 1. Instantly update blacklisted state so UI vanishes instantly
+      setDeletedLoginUserIds((prev) => {
+        const next = Array.from(new Set([...prev, ...identifiersToBlacklist]));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_deleted_login_ids', JSON.stringify(next));
+        }
+        return next;
+      });
+
+      setSelectedLoginUserIds((prev) => prev.filter((id) => id !== user.id));
+      if (inspectingLoginUser?.id === user.id) {
+        setInspectingLoginUser(null);
+        setIsInspectLoginUserModalOpen(false);
+      }
+
+      // 2. Remove from parent state
+      if (user.role === 'studio' && setStudioPartners) {
+        setStudioPartners((prev) => prev.filter((p) => p.id !== user.id && p.email !== user.email));
+      } else if (setCustomerUsers) {
+        setCustomerUsers((prev) => prev.filter((c) => c.id !== user.id && c.email !== user.email));
+      }
+
+      // 3. Delete from cloud (both collections and both docId/email)
+      try {
+        if (user.role === 'studio') {
+          await deleteStudioPartnerFromCloud(user.id);
+          if (user.email) await deleteStudioPartnerFromCloud(user.email);
+        } else {
+          await deleteCustomerUserFromCloud(user.id);
+          if (user.email) await deleteCustomerUserFromCloud(user.email);
+        }
+      } catch (err) {
+        console.warn('Error deleting user from cloud:', err);
+      }
+
+      if (onLogoutUser) {
+        onLogoutUser(user.email || user.userId || user.phone);
+      }
+
+      setSavedSuccess(
+        isMl
+          ? `ഐഡി "${user.userId}" വിജയകരമായി ഡിലീറ്റ് ചെയ്തു.`
+          : `ID "${user.userId}" deleted successfully.`
+      );
+      setTimeout(() => setSavedSuccess(''), 4500);
+    }
+  };
+
+  // Bulk Delete Selected Users
+  const handleBulkDeleteLoginUsers = async () => {
+    if (selectedLoginUserIds.length === 0) return;
+    const count = selectedLoginUserIds.length;
+    const confirmMsg = isMl
+      ? `തിരഞ്ഞെടുത്ത ${count} യൂസർ ഐഡികൾ ഡിലീറ്റ് ചെയ്യണോ?\n\nഡിലീറ്റ് ചെയ്ത എല്ലാ ഐഡികളും ലിസ്റ്റിൽ നിന്നും പൂർണ്ണമായി നീക്കം ചെയ്യപ്പെടും.`
+      : `Delete ${count} selected user accounts?\n\nAll selected accounts will be permanently removed.`;
+
+    if (window.confirm(confirmMsg)) {
+      const usersToDelete = allLoginUsers.filter((u) => selectedLoginUserIds.includes(u.id));
+      const identifiersToBlacklist: string[] = [];
+      usersToDelete.forEach((u) => {
+        if (u.id) identifiersToBlacklist.push(u.id);
+        if (u.email) identifiersToBlacklist.push(u.email.toLowerCase().trim());
+        const clPhone = (u.phone || '').replace(/\D/g, '');
+        if (clPhone) {
+          identifiersToBlacklist.push(clPhone);
+          if (clPhone.length >= 10) identifiersToBlacklist.push(clPhone.slice(-10));
+        }
+        if (u.userId) identifiersToBlacklist.push(u.userId.toLowerCase().trim());
+      });
+
+      // 1. Immediately blacklist so UI reflects deletion
+      setDeletedLoginUserIds((prev) => {
+        const next = Array.from(new Set([...prev, ...identifiersToBlacklist]));
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_deleted_login_ids', JSON.stringify(next));
+        }
+        return next;
+      });
+
+      setSelectedLoginUserIds([]);
+
+      // 2. Remove from parent states
+      const deletedIdsSet = new Set(selectedLoginUserIds);
+      if (setStudioPartners) {
+        setStudioPartners((prev) => prev.filter((p) => !deletedIdsSet.has(p.id || '')));
+      }
+      if (setCustomerUsers) {
+        setCustomerUsers((prev) => prev.filter((c) => !deletedIdsSet.has(c.id || '')));
+      }
+
+      // 3. Delete from cloud
+      try {
+        await bulkDeleteUsersFromCloud(usersToDelete);
+      } catch (err) {
+        console.warn('Bulk delete cloud error:', err);
+      }
+
+      if (onLogoutUser) {
+        usersToDelete.forEach((u) => onLogoutUser(u.email || u.userId || u.phone));
+      }
+
+      setSavedSuccess(
+        isMl
+          ? `${count} യൂസർ ഐഡികൾ വിജയകരമായി നീക്കം ചെയ്തു!`
+          : `${count} user accounts deleted successfully!`
+      );
+      setTimeout(() => setSavedSuccess(''), 4500);
+    }
+  };
+
+  // Export jsPDF Report for Studio Logins (Separate JSP)
+  const handleDownloadStudioLoginsPdf = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const studioList = allLoginUsers.filter((u) => u.role === 'studio');
+
+      doc.setFillColor(30, 27, 75);
+      doc.rect(0, 0, pageWidth, 28, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('FRAMELU B2B STUDIO PARTNERS DIRECTORY', 14, 11);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text('OFFICIAL STUDIO LOGIN CREDENTIALS, OWNER CONTACTS & LOGIN ACTIVITY AUDIT (JSP REPORT)', 14, 17);
+      doc.text(
+        `Destination: ${studioContact.destination || 'Kerala, India'}  |  Admin WhatsApp: +${studioContact.whatsapp || '916238747722'}`,
+        14,
+        23
+      );
+
+      const nowStr = new Date().toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      doc.setFontSize(8.5);
+      doc.text(`Generated: ${nowStr}  |  Total Studios: ${studioList.length}`, pageWidth - 14, 23, { align: 'right' });
+
+      let startY = 35;
+      doc.setFillColor(243, 244, 246);
+      doc.rect(14, startY, pageWidth - 28, 9, 'F');
+      doc.setDrawColor(209, 213, 219);
+      doc.line(14, startY + 9, pageWidth - 14, startY + 9);
+
+      doc.setTextColor(31, 41, 55);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+
+      const col = {
+        sl: 16,
+        id: 26,
+        studioName: 64,
+        owner: 114,
+        phone: 154,
+        email: 190,
+        address: 238,
+        logins: pageWidth - 16,
+      };
+
+      doc.text('SL', col.sl, startY + 6);
+      doc.text('STUDIO ID', col.id, startY + 6);
+      doc.text('STUDIO NAME', col.studioName, startY + 6);
+      doc.text('OWNER / CONTACT', col.owner, startY + 6);
+      doc.text('PHONE NUMBER', col.phone, startY + 6);
+      doc.text('EMAIL ID', col.email, startY + 6);
+      doc.text('ADDRESS & PLACE', col.address, startY + 6);
+      doc.text('LOGINS', col.logins, startY + 6, { align: 'right' });
+
+      let currentY = startY + 16;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+
+      studioList.forEach((st, idx) => {
+        if (currentY > doc.internal.pageSize.getHeight() - 20) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(249, 250, 251);
+          doc.rect(14, currentY - 5, pageWidth - 28, 8, 'F');
+        }
+
+        doc.setTextColor(75, 85, 99);
+        doc.text(String(idx + 1), col.sl, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(67, 56, 202);
+        doc.text(st.userId.substring(0, 18), col.id, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(17, 24, 39);
+        doc.text((st.studioName || '-').substring(0, 24), col.studioName, currentY);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(55, 65, 81);
+        doc.text((st.ownerName || st.name || '-').substring(0, 22), col.owner, currentY);
+        doc.text(st.phone || '-', col.phone, currentY);
+        doc.text((st.email || '-').substring(0, 26), col.email, currentY);
+
+        const addr = `${st.address || ''}${st.place ? ', ' + st.place : ''}`;
+        doc.text(addr.substring(0, 28) || 'Kerala', col.address, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(16, 185, 129);
+        doc.text(`${st.loginCount || 1} logins`, col.logins, currentY, { align: 'right' });
+
+        currentY += 8.5;
+      });
+
+      doc.save(`Framelu_Studio_Logins_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error('Failed to export studio logins PDF:', err);
+      alert('PDF generation failed. Please try again.');
+    }
+  };
+
+  // Export jsPDF Report for Customer Logins (Separate JSP)
+  const handleDownloadCustomerLoginsPdf = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const custList = allLoginUsers.filter((u) => u.role === 'customer');
+
+      doc.setFillColor(6, 78, 59);
+      doc.rect(0, 0, pageWidth, 28, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('FRAMELU CUSTOMER LOGIN & USER DIRECTORY', 14, 11);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text('OFFICIAL CLIENT CONTACT DATA, MOBILE, ADDRESS & LOGIN COUNT AUDIT (JSP REPORT)', 14, 17);
+      doc.text(
+        `Destination: ${studioContact.destination || 'Kerala, India'}  |  Admin WhatsApp: +${studioContact.whatsapp || '916238747722'}`,
+        14,
+        23
+      );
+
+      const nowStr = new Date().toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      doc.setFontSize(8.5);
+      doc.text(`Generated: ${nowStr}  |  Total Customers: ${custList.length}`, pageWidth - 14, 23, { align: 'right' });
+
+      let startY = 35;
+      doc.setFillColor(243, 244, 246);
+      doc.rect(14, startY, pageWidth - 28, 9, 'F');
+      doc.setDrawColor(209, 213, 219);
+      doc.line(14, startY + 9, pageWidth - 14, startY + 9);
+
+      doc.setTextColor(31, 41, 55);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+
+      const col = {
+        sl: 16,
+        id: 26,
+        name: 64,
+        phone: 114,
+        email: 154,
+        address: 202,
+        logins: pageWidth - 16,
+      };
+
+      doc.text('SL', col.sl, startY + 6);
+      doc.text('CUSTOMER ID', col.id, startY + 6);
+      doc.text('CLIENT FULL NAME', col.name, startY + 6);
+      doc.text('MOBILE NUMBER', col.phone, startY + 6);
+      doc.text('EMAIL ADDRESS', col.email, startY + 6);
+      doc.text('FULL ADDRESS & LOCATION', col.address, startY + 6);
+      doc.text('LOGINS', col.logins, startY + 6, { align: 'right' });
+
+      let currentY = startY + 16;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+
+      custList.forEach((cu, idx) => {
+        if (currentY > doc.internal.pageSize.getHeight() - 20) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(249, 250, 251);
+          doc.rect(14, currentY - 5, pageWidth - 28, 8, 'F');
+        }
+
+        doc.setTextColor(75, 85, 99);
+        doc.text(String(idx + 1), col.sl, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(5, 150, 105);
+        doc.text(cu.userId.substring(0, 18), col.id, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(17, 24, 39);
+        doc.text(cu.name.substring(0, 26), col.name, currentY);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(55, 65, 81);
+        doc.text(cu.phone || '-', col.phone, currentY);
+        doc.text((cu.email || '-').substring(0, 26), col.email, currentY);
+
+        const addr = `${cu.address || ''}${cu.place ? ', ' + cu.place : ''}`;
+        doc.text(addr.substring(0, 34) || 'Kerala', col.address, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(16, 185, 129);
+        doc.text(`${cu.loginCount || 1} logins`, col.logins, currentY, { align: 'right' });
+
+        currentY += 8.5;
+      });
+
+      doc.save(`Framelu_Customer_Logins_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error('Failed to export customer logins PDF:', err);
+      alert('PDF generation failed. Please try again.');
+    }
+  };
+
+  // Export jsPDF Report for All Logins
+  const handleDownloadAllLoginsPdf = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      doc.setFillColor(136, 19, 55);
+      doc.rect(0, 0, pageWidth, 28, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('FRAMELU COMPLETE USER LOGINS & ACCOUNTS AUDIT', 14, 11);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text('COMPREHENSIVE AUDIT OF ALL REGISTERED LOGINS (STUDIO & CUSTOMER) WITH FORM DETAILS', 14, 17);
+      doc.text(
+        `Destination: ${studioContact.destination || 'Kerala, India'}  |  Admin WhatsApp: +${studioContact.whatsapp || '916238747722'}`,
+        14,
+        23
+      );
+
+      const nowStr = new Date().toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      doc.setFontSize(8.5);
+      doc.text(`Generated: ${nowStr}  |  Total Users: ${displayedLoginUsers.length}`, pageWidth - 14, 23, { align: 'right' });
+
+      let startY = 35;
+      doc.setFillColor(243, 244, 246);
+      doc.rect(14, startY, pageWidth - 28, 9, 'F');
+      doc.setDrawColor(209, 213, 219);
+      doc.line(14, startY + 9, pageWidth - 14, startY + 9);
+
+      doc.setTextColor(31, 41, 55);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+
+      const col = {
+        sl: 16,
+        role: 25,
+        id: 45,
+        name: 82,
+        phone: 128,
+        email: 164,
+        address: 212,
+        logins: pageWidth - 16,
+      };
+
+      doc.text('SL', col.sl, startY + 6);
+      doc.text('ROLE', col.role, startY + 6);
+      doc.text('USER ID', col.id, startY + 6);
+      doc.text('NAME / STUDIO', col.name, startY + 6);
+      doc.text('PHONE', col.phone, startY + 6);
+      doc.text('EMAIL ID', col.email, startY + 6);
+      doc.text('ADDRESS', col.address, startY + 6);
+      doc.text('LOGINS', col.logins, startY + 6, { align: 'right' });
+
+      let currentY = startY + 16;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+
+      displayedLoginUsers.forEach((u, idx) => {
+        if (currentY > doc.internal.pageSize.getHeight() - 20) {
+          doc.addPage();
+          currentY = 20;
+        }
+
+        if (idx % 2 === 1) {
+          doc.setFillColor(249, 250, 251);
+          doc.rect(14, currentY - 5, pageWidth - 28, 8, 'F');
+        }
+
+        doc.setTextColor(75, 85, 99);
+        doc.text(String(idx + 1), col.sl, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        if (u.role === 'studio') {
+          doc.setTextColor(79, 70, 229);
+          doc.text('STUDIO', col.role, currentY);
+        } else {
+          doc.setTextColor(16, 185, 129);
+          doc.text('CLIENT', col.role, currentY);
+        }
+
+        doc.setTextColor(31, 41, 55);
+        doc.text(u.userId.substring(0, 18), col.id, currentY);
+
+        const displayName = u.role === 'studio' ? `${u.studioName || u.name}` : u.name;
+        doc.text(displayName.substring(0, 24), col.name, currentY);
+        doc.text(u.phone || '-', col.phone, currentY);
+        doc.text((u.email || '-').substring(0, 24), col.email, currentY);
+
+        const addr = `${u.address || ''}${u.place ? ', ' + u.place : ''}`;
+        doc.text(addr.substring(0, 28) || 'Kerala', col.address, currentY);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(180, 83, 9);
+        doc.text(`${u.loginCount || 1}`, col.logins, currentY, { align: 'right' });
+
+        currentY += 8.5;
+      });
+
+      doc.save(`Framelu_All_Logins_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error('Failed to export all logins PDF:', err);
+      alert('PDF generation failed. Please try again.');
+    }
+  };
+
+  // Export Logins as CSV
+  const handleExportLoginsCsv = (filterType: 'all' | 'studio' | 'customer' = 'all') => {
+    const targetUsers =
+      filterType === 'all'
+        ? displayedLoginUsers
+        : displayedLoginUsers.filter((u) => u.role === filterType);
+
+    if (targetUsers.length === 0) {
+      alert(isMl ? 'ഡൗൺലോഡ് ചെയ്യാൻ യൂസർ ഡാറ്റ ലഭ്യമല്ല' : 'No user data available to export');
+      return;
+    }
+
+    const headers = [
+      'SL',
+      'Role',
+      'User ID',
+      'Full Name',
+      'Studio Name',
+      'Mobile Number',
+      'Email ID',
+      'Address',
+      'Place',
+      'Login Count',
+      'Registered Date',
+      'Last Login Date & Time',
+      'Status',
+    ];
+
+    const rows = targetUsers.map((u, i) => [
+      i + 1,
+      u.role.toUpperCase(),
+      `"${u.userId}"`,
+      `"${u.name}"`,
+      `"${u.studioName || '-'}"`,
+      `"${u.phone}"`,
+      `"${u.email || '-'}"`,
+      `"${(u.address || '').replace(/"/g, '""')}"`,
+      `"${u.place || '-'}"`,
+      u.loginCount || 1,
+      `"${new Date(u.registeredAt).toLocaleDateString('en-IN')}"`,
+      `"${new Date(u.lastLoginAt).toLocaleString('en-IN')}"`,
+      `"${u.status || 'active'}"`,
+    ]);
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Framelu_${filterType}_Logins_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
 
@@ -1635,6 +2665,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         >
           <Users className="w-4 h-4" />
           <span>{isMl ? `കസ്റ്റമർ ലീഡുകൾ (${leads.length})` : `Customer Leads (${leads.length})`}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveAdminTab('logins')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition ${
+            activeAdminTab === 'logins'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'hover:text-stone-900 hover:bg-white/60'
+          }`}
+        >
+          <KeyRound className="w-4 h-4" />
+          <span>{isMl ? `ലോഗിൻ വിവരങ്ങൾ (${allLoginUsers.length})` : `Login Details (${allLoginUsers.length})`}</span>
         </button>
 
         <button
@@ -2621,14 +3664,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </p>
                   </div>
 
-                  <div className="p-3 border-t border-stone-100 flex items-center justify-end">
+                  <div className="p-3 border-t border-stone-100 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditOffer(offer)}
+                      className="text-xs text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-amber-50 transition"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>{isMl ? 'എഡിറ്റ്' : 'Edit'}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleDeleteOffer(offer.id)}
-                      className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 p-1"
+                      className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-rose-50 transition"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete</span>
+                      <span>{isMl ? 'ഡിലീറ്റ്' : 'Delete'}</span>
                     </button>
                   </div>
                 </div>
@@ -2786,14 +3837,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </ul>
                   </div>
 
-                  <div className="pt-4 mt-4 border-t border-stone-100 flex items-center justify-end">
+                  <div className="pt-4 mt-4 border-t border-stone-100 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditBoard(b)}
+                      className="text-xs text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-amber-50 transition"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>{isMl ? 'എഡിറ്റ്' : 'Edit'}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleDeleteBoard(b.id)}
-                      className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 p-1"
+                      className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-rose-50 transition"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete</span>
+                      <span>{isMl ? 'ഡിലീറ്റ്' : 'Delete'}</span>
                     </button>
                   </div>
                 </div>
@@ -2943,7 +4002,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           {/* Place Filter & Search Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 p-4 rounded-2xl bg-stone-50 border border-stone-200">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6 p-4 rounded-2xl bg-stone-50 border border-stone-200">
             {/* Search Input */}
             <div className="sm:col-span-2 relative">
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -2956,13 +4015,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               />
             </div>
 
+            {/* User ID Dropdown Filter */}
+            <div className="relative">
+              <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <select
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 rounded-xl border border-stone-200 text-xs font-bold text-stone-800 bg-white focus:ring-2 focus:ring-amber-500 truncate"
+                title={isMl ? 'യൂസർ ഐഡി പ്രകാരം ഫിൽറ്റർ ചെയ്യുക' : 'Filter by User ID'}
+              >
+                <option value="all">{isMl ? 'എല്ലാ യൂസർമാരും (All IDs)' : 'All Logged-in IDs'}</option>
+                {allLoginUsers.map((u) => (
+                  <option key={u.id} value={u.email || u.phone || u.userId}>
+                    {u.name} ({u.userId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Place Dropdown Filter */}
             <div className="relative">
               <Filter className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <select
                 value={placeFilter}
                 onChange={(e) => setPlaceFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-xl border border-stone-200 text-xs font-bold text-stone-800 bg-white focus:ring-2 focus:ring-amber-500"
+                className="w-full pl-10 pr-4 py-2 rounded-xl border border-stone-200 text-xs font-bold text-stone-800 bg-white focus:ring-2 focus:ring-amber-500 truncate"
               >
                 <option value="all">{isMl ? 'എല്ലാ സ്ഥലങ്ങളും (All Places)' : 'All Locations'}</option>
                 {uniquePlaces.map((pl, i) => (
@@ -3064,13 +4141,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         title={isMl ? 'എല്ലാം തിരഞ്ഞെടുക്കുക' : 'Select All'}
                       />
                     </th>
-                    <th className="py-3 px-3 font-bold">{isMl ? 'കസ്റ്റമർ പേര്' : 'Name'}</th>
+                    <th className="py-3 px-3 font-bold">{isMl ? 'ഓണർ / ക്രിയേറ്റർ' : 'Owner & Creator'}</th>
+                    <th className="py-3 px-3 font-bold">{isMl ? 'ക്ലയന്റ് & ബുക്കിംഗ്' : 'Client & Booking'}</th>
                     <th className="py-3 px-3 font-bold">{isMl ? 'മൊബൈൽ' : 'Phone'}</th>
-                    <th className="py-3 px-3 font-bold">{isMl ? 'സ്ഥലം & അഡ്രസ്' : 'Place & Address'}</th>
+                    <th className="py-3 px-3 font-bold">{isMl ? 'സ്ഥലം' : 'Place'}</th>
                     <th className="py-3 px-3 font-bold">{isMl ? 'വിവാഹ തീയതി' : 'Wedding Date'}</th>
-                    <th className="py-3 px-3 font-bold text-right">{isMl ? 'എസ്റ്റിമേറ്റ് തുക' : 'Total Amount'}</th>
+                    <th className="py-3 px-2 font-bold text-right">{isMl ? 'പാക്കേജ് തുക' : 'Package Total'}</th>
+                    <th className="py-3 px-2 font-bold text-right">{isMl ? 'ഓഫർ കിഴിവ്' : 'Offer Discount'}</th>
+                    <th className="py-3 px-2 font-bold text-right">{isMl ? 'ഡിസ്കൗണ്ട്' : 'Discount'}</th>
+                    <th className="py-3 px-2 font-bold text-right">{isMl ? 'ജിഎസ്ടി (18%)' : 'GST (18%)'}</th>
+                    <th className="py-3 px-2 font-bold text-right text-amber-900 bg-amber-100/60">{isMl ? 'അന്തിമ ക്ലോസിംഗ് തുക' : 'Final Closed Amount'}</th>
                     <th className="py-3 px-3 font-bold text-center">{isMl ? 'സ്റ്റാറ്റസ്' : 'Status'}</th>
-                    <th className="py-3 px-3 font-bold text-center">{isMl ? 'പ്ലാൻ വിവരങ്ങൾ' : 'Plan Details'}</th>
+                    <th className="py-3 px-3 font-bold text-center">{isMl ? 'പ്ലാൻ' : 'Plan'}</th>
                     <th className="py-3 px-3 font-bold text-right">{isMl ? 'ആക്ഷൻസ്' : 'Actions'}</th>
                   </tr>
                 </thead>
@@ -3079,6 +4161,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const leadKey = lead.id || `lead_key_${idx}`;
                     const isChecked = selectedLeadIds.includes(leadKey);
                     const statusCfg = getLeadStatusConfig(lead.status || 'New', isMl);
+                    const ownerName = lead.ownerName || lead.createdByName || (lead.studioBranding ? lead.studioBranding.ownerName : lead.name);
+                    const creatorEmail = lead.ownerEmail || lead.createdByEmail || lead.userEmail || (lead.studioBranding ? lead.studioBranding.email : lead.email);
 
                     return (
                       <tr
@@ -3097,34 +4181,72 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           />
                         </td>
 
+                        {/* Owner & Creator Column (ആരാണ്, ഏത് മെയിൽ) */}
                         <td
-                          className="py-3 px-3 font-black text-stone-900 cursor-pointer"
-                          onClick={() => setSelectedLead(lead)}
+                          className="py-3 px-3 cursor-pointer"
+                          onClick={() => {
+                            setSelectedLead(lead);
+                            setIsPlanModalOpen(true);
+                          }}
                         >
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span>{lead.name}</span>
-                            {lead.studioBranding && (
+                            <span className="font-black text-stone-900 text-xs sm:text-sm">
+                              {ownerName}
+                            </span>
+                            {lead.studioBranding ? (
                               <span className="text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded border border-indigo-200">
-                                🏢 Studio Quote
+                                🏢 Studio
                               </span>
-                            )}
-                            {lead.leadType === 'standalone_photoshoot' && (
-                              <span className="text-[9px] font-extrabold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
-                                📷 {lead.photoshootDetails?.title || 'Photoshoot'}
+                            ) : (
+                              <span className="text-[9px] font-black tracking-wider bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
+                                👤 Owner
                               </span>
                             )}
                           </div>
-                          {lead.studioBranding ? (
-                            <span className="block text-[10px] text-indigo-800 font-bold mt-0.5">
-                              Studio: {lead.studioBranding.studioName} ({lead.studioBranding.ownerName})
+                          {creatorEmail ? (
+                            <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-800 mt-0.5">
+                              <Mail className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span className="truncate max-w-[200px]" title={creatorEmail}>
+                                {creatorEmail}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-stone-400 block mt-0.5 font-normal">
+                              Email: N/A
                             </span>
-                          ) : null}
-                          {lead.email && (
-                            <span className="block text-[10px] text-stone-400 font-normal">
-                              {lead.email}
+                          )}
+                          {lead.studioBranding && (
+                            <span className="block text-[10px] text-indigo-800 font-bold mt-0.5">
+                              Studio: {lead.studioBranding.studioName}
                             </span>
                           )}
                         </td>
+
+                        {/* Client & Booking Column */}
+                        <td
+                          className="py-3 px-3 cursor-pointer"
+                          onClick={() => {
+                            setSelectedLead(lead);
+                            setIsPlanModalOpen(true);
+                          }}
+                        >
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-stone-800 text-xs">{lead.name}</span>
+                            {lead.leadType === 'standalone_photoshoot' ? (
+                              <span className="text-[9px] font-extrabold bg-rose-100 text-rose-900 px-1.5 py-0.5 rounded border border-rose-300">
+                                📷 {lead.photoshootDetails?.title || 'Photoshoot'}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-medium bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded border border-stone-200">
+                                💍 Wedding
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-mono text-stone-400 block mt-0.5">
+                            #{lead.id}
+                          </span>
+                        </td>
+
                         <td className="py-3 px-3 font-semibold text-stone-800">{lead.phone}</td>
                         <td className="py-3 px-3 text-stone-600">
                           <span className="font-bold text-stone-800 block">
@@ -3146,9 +4268,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             ? lead.photoshootDetails.date
                             : (lead.weddingDate || 'തീരുമാനിച്ചിട്ടില്ല')}
                         </td>
-                        <td className="py-3 px-3 text-right font-black text-amber-700">
-                          ₹{(lead.totalPrice || 0).toLocaleString('en-IN')}
-                        </td>
+                        {(() => {
+                          const basePkg = lead.totalPrice || 0;
+                          const offerDisc = (lead as any).offerDiscountAmount || (lead as any).packageDiscount || 0;
+                          const couponDisc = lead.discountAmount || (lead.discountPercentage && lead.discountPercentage > 0 ? Math.round((basePkg * lead.discountPercentage) / 100) : 0);
+                          const taxableTotal = lead.grandTotalAfterDiscount || Math.max(0, basePkg - couponDisc);
+                          const gstAmt = lead.taxAmount || Math.round(taxableTotal * 0.18);
+                          const finalClosedAmt = lead.grandTotal || (taxableTotal + gstAmt);
+
+                          return (
+                            <>
+                              {/* 1. Full Package Total */}
+                              <td className="py-3 px-2 text-right font-bold text-stone-900 whitespace-nowrap">
+                                ₹{basePkg.toLocaleString('en-IN')}
+                              </td>
+
+                              {/* 2. Offer Discount */}
+                              <td className="py-3 px-2 text-right font-bold whitespace-nowrap">
+                                {offerDisc > 0 ? (
+                                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[11px] font-black">
+                                    -₹{offerDisc.toLocaleString('en-IN')}
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-400 font-normal">₹0</span>
+                                )}
+                              </td>
+
+                              {/* 3. Discount */}
+                              <td className="py-3 px-2 text-right font-bold whitespace-nowrap">
+                                {couponDisc > 0 ? (
+                                  <span className="bg-rose-50 text-rose-800 border border-rose-200 px-1.5 py-0.5 rounded text-[11px] font-black" title={lead.couponCode ? `Coupon: ${lead.couponCode}` : undefined}>
+                                    -₹{couponDisc.toLocaleString('en-IN')}
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-400 font-normal">₹0</span>
+                                )}
+                              </td>
+
+                              {/* 4. GST 18% */}
+                              <td className="py-3 px-2 text-right font-semibold text-stone-600 whitespace-nowrap">
+                                ₹{gstAmt.toLocaleString('en-IN')}
+                              </td>
+
+                              {/* 5. Final Closed Amount */}
+                              <td className="py-3 px-2 text-right font-black bg-amber-50/60 whitespace-nowrap">
+                                <span className="bg-amber-600 hover:bg-amber-700 text-white px-2 py-1 rounded-lg shadow-2xs text-[11px] font-black inline-block">
+                                  ₹{finalClosedAmt.toLocaleString('en-IN')}
+                                </span>
+                              </td>
+                            </>
+                          );
+                        })()}
                         <td className="py-3 px-3 text-center">
                           <div className="inline-flex items-center gap-1.5">
                             <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${statusCfg.dotClass}`} />
@@ -3185,9 +4355,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="py-3 px-3 text-center">
                           <button
                             type="button"
-                            onClick={() => setSelectedLead(lead)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition active:scale-95"
-                            title="View complete package chosen by customer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedLead(lead);
+                              setIsPlanModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition active:scale-95 cursor-pointer"
+                            title={isMl ? 'കസ്റ്റമർ തിരഞ്ഞെടുത്ത സമ്പൂർണ്ണ പ്ലാൻ കാണുക' : 'View complete package chosen by customer'}
                           >
                             <Eye className="w-3.5 h-3.5" />
                             <span>{isMl ? 'പ്ലാൻ കാണുക' : 'View Plan'}</span>
@@ -3196,7 +4370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         <td className="py-3 px-3 text-right space-x-1">
                           <a
-                            href={`tel:${lead.phone}`}
+                            href={`tel:${(lead.phone || '').replace(/[^\d+]/g, '')}`}
                             className="inline-flex items-center justify-center p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
                             title="Call directly"
                           >
@@ -3208,8 +4382,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             onClick={() => {
                               setSelectedLead(lead);
                               setIsPdfModalOpen(true);
+                              setIsPlanModalOpen(false);
                             }}
-                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-stone-100 text-stone-700 hover:bg-stone-200 transition"
+                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-stone-100 text-stone-700 hover:bg-stone-200 transition cursor-pointer"
                             title="Preview & Download PDF Quotation"
                           >
                             <FileText className="w-3.5 h-3.5" />
@@ -3231,6 +4406,658 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* 5.5 LOGIN DETAILS & REGISTERED IDS PORTAL (Requirement) */}
+      {activeAdminTab === 'logins' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Top Title Banner */}
+          <div className="bg-gradient-to-r from-stone-900 via-stone-850 to-stone-900 text-white rounded-3xl p-6 sm:p-7 shadow-xl border border-stone-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-amber-400 text-xs font-black uppercase tracking-wider mb-1">
+                <KeyRound className="w-4 h-4" />
+                <span>{isMl ? 'യൂസർ ലോഗിൻ പോർട്ടൽ & ഐഡി കൺട്രോൾ' : 'User Login Portal & ID Management'}</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight">
+                {isMl ? 'ലോഗിൻ വിവരങ്ങൾ & അക്കൗണ്ട് ഡയറക്ടറി' : 'Login Details & Accounts Directory'}
+              </h3>
+              <p className="text-xs sm:text-sm text-stone-300 mt-1 max-w-2xl leading-relaxed">
+                {isMl
+                  ? 'ഫ്രണ്ട് എൻഡിൽ ലോഗിൻ ചെയ്ത എല്ലാ സ്റ്റുഡിയോ പാർട്ണർമാരുടെയും കസ്റ്റമർമാരുടെയും വിവരങ്ങൾ (പേര്, ഫോൺ, വിലാസം, ഇമെയിൽ, ലോഗിൻ തവണകൾ). ഇവിടെ ഐഡികൾ ഡിലീറ്റ് ചെയ്യാനും നിയന്ത്രിക്കാനും സാധിക്കും.'
+                  : 'Directory of all users who have logged in (Studio & Customer) with form details, phone, address, and login counts. Control and delete accounts from here.'}
+              </p>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 text-center">
+                <span className="text-[10px] text-stone-300 font-bold block uppercase tracking-wider">
+                  {isMl ? 'ആകെ ഐഡികൾ' : 'Total IDs'}
+                </span>
+                <span className="text-xl font-black text-amber-400 mt-0.5 block">
+                  {allLoginUsers.length}
+                </span>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 text-center">
+                <span className="text-[10px] text-stone-300 font-bold block uppercase tracking-wider">
+                  {isMl ? 'സ്റ്റുഡിയോകൾ' : 'Studios'}
+                </span>
+                <span className="text-xl font-black text-indigo-400 mt-0.5 block">
+                  {allLoginUsers.filter((u) => u.role === 'studio').length}
+                </span>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 text-center">
+                <span className="text-[10px] text-stone-300 font-bold block uppercase tracking-wider">
+                  {isMl ? 'കസ്റ്റമർമാർ' : 'Clients'}
+                </span>
+                <span className="text-xl font-black text-emerald-400 mt-0.5 block">
+                  {allLoginUsers.filter((u) => u.role === 'customer').length}
+                </span>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 text-center">
+                <span className="text-[10px] text-stone-300 font-bold block uppercase tracking-wider">
+                  {isMl ? 'ആകെ ലോഗിനുകൾ' : 'Total Visits'}
+                </span>
+                <span className="text-xl font-black text-rose-400 mt-0.5 block">
+                  {allLoginUsers.reduce((sum, u) => sum + (u.loginCount || 1), 0)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter & Action Toolbar */}
+          <div className="bg-white rounded-3xl border border-stone-200 p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Sub-tab role switcher */}
+            <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-stone-100 rounded-2xl border border-stone-200">
+              <button
+                type="button"
+                onClick={() => setLoginRoleFilter('all')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                  loginRoleFilter === 'all'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                <span>{isMl ? 'എല്ലാ ഐഡികളും' : 'All Accounts'}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/20">
+                  {allLoginUsers.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLoginRoleFilter('studio')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                  loginRoleFilter === 'studio'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>{isMl ? 'സ്റ്റുഡിയോ ലോഗിൻ (Studio)' : 'Studio Logins'}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/20">
+                  {allLoginUsers.filter((u) => u.role === 'studio').length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLoginRoleFilter('customer')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                  loginRoleFilter === 'customer'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>{isMl ? 'കസ്റ്റമർ ലോഗിൻ (Client)' : 'Customer Logins'}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/20">
+                  {allLoginUsers.filter((u) => u.role === 'customer').length}
+                </span>
+              </button>
+            </div>
+
+            {/* Search and Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="relative min-w-[220px]">
+                <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder={isMl ? 'പേര്, ഫോൺ, വിലാസം, ഐഡി തിരയുക...' : 'Search name, phone, address, ID...'}
+                  value={loginSearchQuery}
+                  onChange={(e) => setLoginSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3.5 py-2 rounded-xl border border-stone-250 text-xs bg-stone-50 focus:bg-white text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+                {loginSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setLoginSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Bulk Delete Button */}
+              {selectedLoginUserIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBulkDeleteLoginUsers}
+                  className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center gap-1.5 transition shadow-sm cursor-pointer animate-fade-in"
+                  title="Bulk Delete Selected Accounts"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isMl ? `ഡിലീറ്റ് (${selectedLoginUserIds.length})` : `Delete (${selectedLoginUserIds.length})`}</span>
+                </button>
+              )}
+
+              {/* Export Buttons */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleDownloadStudioLoginsPdf}
+                  className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 hover:bg-indigo-100 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Download Studio Logins PDF Report (JSP)"
+                >
+                  <Download className="w-3.5 h-3.5 text-indigo-700" />
+                  <span>{isMl ? 'സ്റ്റുഡിയോ PDF (JSP)' : 'Studio PDF (JSP)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadCustomerLoginsPdf}
+                  className="px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Download Customer Logins PDF Report (JSP)"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>{isMl ? 'കസ്റ്റമർ PDF (JSP)' : 'Customer PDF (JSP)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleExportLoginsCsv(loginRoleFilter)}
+                  className="px-3 py-2 rounded-xl bg-stone-100 border border-stone-250 text-stone-800 hover:bg-stone-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Export CSV / Excel"
+                >
+                  <Download className="w-3.5 h-3.5 text-stone-600" />
+                  <span>CSV</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Users Table */}
+          {displayedLoginUsers.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-stone-200 p-12 text-center shadow-xs">
+              <div className="w-14 h-14 bg-stone-100 text-stone-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <KeyRound className="w-7 h-7" />
+              </div>
+              <h4 className="text-base font-bold text-stone-800 mb-1">
+                {isMl ? 'ലോഗിൻ വിവരങ്ങൾ ലഭ്യമല്ല' : 'No Login Users Found'}
+              </h4>
+              <p className="text-xs text-stone-500 max-w-md mx-auto">
+                {loginSearchQuery
+                  ? isMl
+                    ? `"${loginSearchQuery}" എന്നതിന് അനുയോജ്യമായ യൂസർ വിവരങ്ങൾ കണ്ടെത്താനായില്ല.`
+                    : `No users matched "${loginSearchQuery}". Try clearing search filter.`
+                  : isMl
+                  ? 'സ്റ്റുഡിയോ അല്ലെങ്കിൽ കസ്റ്റമർ ലോഗിൻ ചെയ്യുമ്പോൾ അവരുടെ വിവരങ്ങൾ ഇവിടെ തത്സമയം ദൃശ്യമാകും.'
+                  : 'When users log in, their full registration details and login count will appear here in real-time.'}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-stone-100/80 border-b border-stone-200 text-stone-700 font-black uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-3 w-10 text-center">
+                        <button
+                          type="button"
+                          onClick={toggleSelectAllLoginUsers}
+                          className="text-stone-500 hover:text-stone-900 transition cursor-pointer"
+                        >
+                          {displayedLoginUsers.length > 0 &&
+                          displayedLoginUsers.every((u) => selectedLoginUserIds.includes(u.id)) ? (
+                            <CheckSquare className="w-4 h-4 text-amber-600" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="py-3 px-3">{isMl ? 'യൂസർ ഐഡി & റോൾ' : 'User ID & Role'}</th>
+                      <th className="py-3 px-3">{isMl ? 'പേര് / സ്ഥാപനം' : 'Name & Profile'}</th>
+                      <th className="py-3 px-3">{isMl ? 'മൊബൈൽ നമ്പർ' : 'Mobile Number'}</th>
+                      <th className="py-3 px-3">{isMl ? 'ഇമെയിൽ ഐഡി' : 'Email ID'}</th>
+                      <th className="py-3 px-3">{isMl ? 'വിലാസം & സ്ഥലം' : 'Address & Location'}</th>
+                      <th className="py-3 px-3 text-center">{isMl ? 'ലോഗിൻ തവണ' : 'Login Count'}</th>
+                      <th className="py-3 px-3">{isMl ? 'അവസാന ലോഗിൻ' : 'Last Login'}</th>
+                      <th className="py-3 px-3 text-center">{isMl ? 'കൊട്ടേഷനുകൾ' : 'Quotations'}</th>
+                      <th className="py-3 px-3 text-right">{isMl ? 'കൺട്രോൾ' : 'Actions'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {displayedLoginUsers.map((user, idx) => {
+                      const isSelected = selectedLoginUserIds.includes(user.id);
+                      const isStudio = user.role === 'studio';
+                      const userQuotes = getUserQuotations(user);
+
+                      return (
+                        <tr
+                          key={user.id || `login_user_${idx}`}
+                          className={`hover:bg-amber-50/30 transition ${
+                            isSelected ? 'bg-amber-50/50' : idx % 2 === 1 ? 'bg-stone-50/40' : 'bg-white'
+                          }`}
+                        >
+                          <td className="py-3 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => toggleSelectLoginUser(user.id)}
+                              className="text-stone-400 hover:text-stone-700 transition cursor-pointer"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-amber-600" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
+                            </button>
+                          </td>
+
+                          {/* ID & Role */}
+                          <td className="py-3 px-3">
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="font-black text-stone-900 text-xs font-mono">
+                                {user.userId}
+                              </span>
+                              <span
+                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  isStudio
+                                    ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                                    : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                                }`}
+                              >
+                                {isStudio ? (isMl ? '🏢 സ്റ്റുഡിയോ' : '🏢 Studio') : (isMl ? '👤 കസ്റ്റമർ' : '👤 Client')}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Name & Details */}
+                          <td className="py-3 px-3">
+                            <div>
+                              <p className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                                <span>{user.name}</span>
+                              </p>
+                              {isStudio && user.studioName && (
+                                <p className="text-[10px] text-indigo-700 font-bold truncate max-w-[180px]">
+                                  {user.studioName}
+                                </p>
+                              )}
+                              {user.authMethod && (
+                                <span className="text-[9px] text-stone-400 font-medium">
+                                  via {user.authMethod}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Phone */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <a
+                                href={`tel:${user.phone}`}
+                                className="font-bold text-stone-800 hover:text-amber-700 transition"
+                              >
+                                {user.phone ? `+91 ${user.phone.replace(/(\d{5})(\d{5})/, '$1 $2')}` : '-'}
+                              </a>
+                              {user.phone && (
+                                <a
+                                  href={`https://wa.me/91${user.phone.replace(/\D/g, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition"
+                                  title="Chat on WhatsApp"
+                                >
+                                  <MessageCircle className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Email */}
+                          <td className="py-3 px-3">
+                            {user.email ? (
+                              <a
+                                href={`mailto:${user.email}`}
+                                className="text-stone-600 hover:text-amber-700 transition font-medium truncate max-w-[180px] block"
+                                title={user.email}
+                              >
+                                {user.email}
+                              </a>
+                            ) : (
+                              <span className="text-stone-400">-</span>
+                            )}
+                          </td>
+
+                          {/* Address & Place */}
+                          <td className="py-3 px-3 max-w-[200px]">
+                            <div className="flex items-start gap-1">
+                              <MapPin className="w-3.5 h-3.5 text-stone-400 shrink-0 mt-0.5" />
+                              <div className="truncate">
+                                <span className="font-bold text-stone-800 text-[11px] block truncate">
+                                  {user.place || 'Kerala'}
+                                </span>
+                                <span className="text-[10px] text-stone-500 truncate block" title={user.address}>
+                                  {user.address || 'Address provided during login'}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Login Count */}
+                          <td className="py-3 px-3 text-center">
+                            <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full font-black text-xs bg-amber-100 text-amber-900 border border-amber-250">
+                              {user.loginCount || 1} {isMl ? 'തവണ' : 'logins'}
+                            </span>
+                          </td>
+
+                          {/* Last Login */}
+                          <td className="py-3 px-3">
+                            <div>
+                              <span className="text-stone-700 font-bold text-[11px] block">
+                                {new Date(user.lastLoginAt).toLocaleDateString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })}
+                              </span>
+                              <span className="text-stone-400 text-[9px]">
+                                {new Date(user.lastLoginAt).toLocaleTimeString('en-IN', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Quotations Count & View Link */}
+                          <td className="py-3 px-3 text-center">
+                            {userQuotes.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUserFilter(user.email || user.phone || user.userId);
+                                  setActiveAdminTab('leads');
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 transition cursor-pointer"
+                                title={isMl ? 'ഈ ഐഡിയുടെ കൊട്ടേഷനുകൾ കാണുക' : 'View quotations created by this user'}
+                              >
+                                <FileText className="w-3.5 h-3.5 text-amber-700" />
+                                <span>{userQuotes.length} {isMl ? 'എണ്ണം' : 'quotes'}</span>
+                              </button>
+                            ) : (
+                              <span className="text-stone-400 text-xs font-medium">-</span>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* View Details / Quotations */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInspectingLoginUser(user);
+                                  setIsInspectLoginUserModalOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg bg-stone-100 hover:bg-amber-100 text-stone-600 hover:text-amber-900 transition cursor-pointer"
+                                title={isMl ? 'വിശദാംശങ്ങളും കൊട്ടേഷനും കാണുക' : 'View Details & Quotations'}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Direct Jump to Quotes if any */}
+                              {userQuotes.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUserFilter(user.email || user.phone || user.userId);
+                                    setActiveAdminTab('leads');
+                                  }}
+                                  className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 transition cursor-pointer"
+                                  title={isMl ? 'കൊട്ടേഷനുകൾ ഫിൽറ്റർ ചെയ്യുക' : 'Filter User Quotations'}
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+
+                              {/* Delete ID */}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLoginUser(user)}
+                                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-900 transition cursor-pointer"
+                                title={isMl ? 'ഐഡി ഡിലീറ്റ് ചെയ്യുക' : 'Delete User ID'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* INSPECT LOGIN USER DETAILS MODAL */}
+      {isInspectLoginUserModalOpen && inspectingLoginUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-stone-200 relative overflow-hidden max-h-[92vh] flex flex-col">
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-600 via-indigo-600 to-emerald-600" />
+
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <span
+                  className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full inline-block mb-1.5 ${
+                    inspectingLoginUser.role === 'studio'
+                      ? 'bg-indigo-100 text-indigo-900'
+                      : 'bg-emerald-100 text-emerald-900'
+                  }`}
+                >
+                  {inspectingLoginUser.role === 'studio' ? '🏢 Studio Partner' : '👤 Customer User'}
+                </span>
+                <h3 className="text-lg font-black text-stone-900">
+                  {inspectingLoginUser.name}
+                </h3>
+                <p className="text-xs text-stone-500 font-mono">
+                  ID: {inspectingLoginUser.userId}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsInspectLoginUserModalOpen(false)}
+                className="p-2 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto pr-1 flex-1 space-y-4">
+              <div className="space-y-3.5 bg-stone-50 p-4 rounded-2xl border border-stone-200 text-xs">
+                {inspectingLoginUser.studioName && (
+                <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                  <span className="font-bold text-stone-500">{isMl ? 'സ്റ്റുഡിയോ പേര്' : 'Studio Name'}</span>
+                  <span className="font-black text-indigo-900">{inspectingLoginUser.studioName}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span className="font-bold text-stone-500">{isMl ? 'മൊബൈൽ നമ്പർ' : 'Mobile Number'}</span>
+                <span className="font-bold text-stone-900 font-mono">+91 {inspectingLoginUser.phone}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span className="font-bold text-stone-500">{isMl ? 'ഇമെയിൽ ഐഡി' : 'Email Address'}</span>
+                <span className="font-bold text-stone-900">{inspectingLoginUser.email || '-'}</span>
+              </div>
+
+              <div className="py-1 border-b border-stone-200/60">
+                <span className="font-bold text-stone-500 block mb-0.5">{isMl ? 'പൂർണ്ണ വിലാസം' : 'Full Address'}</span>
+                <span className="font-medium text-stone-800 leading-relaxed block">
+                  {inspectingLoginUser.address || '-'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span className="font-bold text-stone-500">{isMl ? 'സ്ഥലം / ജില്ല' : 'Location / District'}</span>
+                <span className="font-bold text-stone-900">{inspectingLoginUser.place || '-'}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span className="font-bold text-stone-500">{isMl ? 'ലോഗിൻ തവണകൾ' : 'Total Login Count'}</span>
+                <span className="font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  {inspectingLoginUser.loginCount || 1} {isMl ? 'തവണ ലോഗിൻ ചെയ്തു' : 'visits'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span className="font-bold text-stone-500">{isMl ? 'ആദ്യ രജിസ്ട്രേഷൻ' : 'Registered Date'}</span>
+                <span className="font-medium text-stone-700">
+                  {new Date(inspectingLoginUser.registeredAt).toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="font-bold text-stone-500">{isMl ? 'അവസാന ലോഗിൻ' : 'Last Login Time'}</span>
+                <span className="font-medium text-stone-700">
+                  {new Date(inspectingLoginUser.lastLoginAt).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            {/* List of quotations created by this User */}
+            {(() => {
+              const quotes = getUserQuotations(inspectingLoginUser);
+              return (
+                <div className="mt-4 pt-3 border-t border-stone-200">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <h4 className="text-xs font-black text-stone-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{isMl ? `ക്രിയേറ്റ് ചെയ്ത കൊട്ടേഷനുകൾ (${quotes.length})` : `Created Quotations (${quotes.length})`}</span>
+                    </h4>
+                    {quotes.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsInspectLoginUserModalOpen(false);
+                          setUserFilter(inspectingLoginUser.email || inspectingLoginUser.phone || inspectingLoginUser.userId);
+                          setActiveAdminTab('leads');
+                        }}
+                        className="text-[11px] font-bold text-amber-700 hover:text-amber-800 transition cursor-pointer"
+                      >
+                        {isMl ? 'എല്ലാം കാണുക →' : 'View all in Leads →'}
+                      </button>
+                    )}
+                  </div>
+
+                  {quotes.length === 0 ? (
+                    <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 text-center text-xs text-stone-500">
+                      {isMl ? 'ഈ യൂസർ ഇതുവരെ കൊട്ടേഷൻ ഒന്നും ക്രിയേറ്റ് ചെയ്തിട്ടില്ല.' : 'No quotations created by this user yet.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {quotes.map((q, idx) => (
+                        <div
+                          key={q.id || `quote_${idx}`}
+                          className="p-3 rounded-2xl bg-amber-50/50 hover:bg-amber-50 border border-amber-200/80 flex items-center justify-between gap-3 text-xs transition"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-black text-stone-900 text-[11px]">{q.id}</span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-600 text-white shadow-2xs">
+                                ₹{Number(q.grandTotal || q.totalPrice || 0).toLocaleString('en-IN')}
+                              </span>
+                              <span className="text-[10px] text-stone-600 font-semibold">
+                                (Pkg: ₹{Number(q.totalPrice || 0).toLocaleString('en-IN')}{q.discountAmount ? ` • Disc: -₹${Number(q.discountAmount).toLocaleString('en-IN')}` : ''} • GST: ₹{Number(q.taxAmount || 0).toLocaleString('en-IN')})
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-stone-600 mt-1 truncate">
+                              {q.venueLocation || q.place || 'Kerala'} • {q.weddingDate || 'Date TBD'} • {q.status || 'New'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedLead(q);
+                                setIsPdfModalOpen(true);
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs transition cursor-pointer"
+                              title={isMl ? 'PDF കാണുക' : 'View PDF'}
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedLead(q);
+                                setIsPlanModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold transition cursor-pointer"
+                              title={isMl ? 'വിശദാംശങ്ങൾ' : 'Details'}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center justify-between gap-3 mt-6 pt-3 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => handleDeleteLoginUser(inspectingLoginUser)}
+                className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>{isMl ? 'ഐഡി ഡിലീറ്റ് ചെയ്യുക' : 'Delete Account'}</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                {inspectingLoginUser.phone && (
+                  <a
+                    href={`https://wa.me/91${inspectingLoginUser.phone.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsInspectLoginUserModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition cursor-pointer"
+                >
+                  {isMl ? 'അടയ്ക്കുക' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -4695,6 +6522,268 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* Edit Promo Offer Modal */}
+      {isEditOfferModalOpen && editingOffer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-900/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative border border-stone-200 my-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-stone-200">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                  Edit Offer Card
+                </span>
+                <h3 className="text-xl font-black text-stone-900 mt-1">
+                  {isMl ? 'ഓഫർ കാർഡും പോസ്റ്ററും എഡിറ്റ് ചെയ്യുക' : 'Edit Promotional Offer & Poster'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditOfferModalOpen(false);
+                  setEditingOffer(null);
+                }}
+                className="p-2 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedOffer} className="space-y-4 pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'ഓഫർ ടൈറ്റിൽ (English) *' : 'Offer Title (English) *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingOffer.title || ''}
+                    onChange={(e) => setEditingOffer({ ...editingOffer, title: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-bold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'ഓഫർ ടൈറ്റിൽ (മലയാളം)' : 'Offer Title (Malayalam)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={editingOffer.titleMl || ''}
+                    onChange={(e) => setEditingOffer({ ...editingOffer, titleMl: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-bold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'ഓഫർ ബാഡ്ജ് / ടാഗ്' : 'Offer Badge / Tag'}
+                  </label>
+                  <input
+                    type="text"
+                    value={editingOffer.badge || ''}
+                    onChange={(e) => setEditingOffer({ ...editingOffer, badge: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-semibold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'വാലിഡിറ്റി തീയതി (Valid Till)' : 'Valid Till (Date)'}
+                  </label>
+                  <input
+                    type="date"
+                    value={editingOffer.validTill || ''}
+                    onChange={(e) => setEditingOffer({ ...editingOffer, validTill: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-semibold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <ImageUploadField
+                  label={isMl ? 'പോസ്റ്റർ ഫോട്ടോ (Poster Photo)' : 'Offer Poster Photo'}
+                  imageUrl={editingOffer.posterUrl || ''}
+                  onChange={(val) => setEditingOffer({ ...editingOffer, posterUrl: val })}
+                  isMl={isMl}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  {isMl ? 'വിവരണം / ഓഫർ ആനുകൂല്യങ്ങൾ' : 'Description / Offer Inclusions'}
+                </label>
+                <textarea
+                  rows={3}
+                  value={editingOffer.description || ''}
+                  onChange={(e) => setEditingOffer({ ...editingOffer, description: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-semibold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditOfferModalOpen(false);
+                    setEditingOffer(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition"
+                >
+                  {isMl ? 'റദ്ദാക്കുക' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isMl ? 'മാറ്റങ്ങൾ സേവ് ചെയ്യുക' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Highlight Board Modal */}
+      {isEditBoardModalOpen && editingBoard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-900/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative border border-stone-200 my-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-stone-200">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                  Edit Highlight Board
+                </span>
+                <h3 className="text-xl font-black text-stone-900 mt-1">
+                  {isMl ? 'ഹൈലൈറ്റ് പാക്കേജ് ബോർഡ് എഡിറ്റ് ചെയ്യുക' : 'Edit Highlight Package Board'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditBoardModalOpen(false);
+                  setEditingBoard(null);
+                }}
+                className="p-2 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedBoard} className="space-y-4 pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'പാക്കേജ് പേര് (English) *' : 'Package Name (English) *'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingBoard.title || ''}
+                    onChange={(e) => setEditingBoard({ ...editingBoard, title: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-bold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'പാക്കേജ് പേര് (മലയാളം)' : 'Package Name (Malayalam)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={editingBoard.titleMl || ''}
+                    onChange={(e) => setEditingBoard({ ...editingBoard, titleMl: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-bold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'പാക്കേജ് പ്രൈസ് (₹) *' : 'Package Price (₹) *'}
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={editingBoard.price || ''}
+                    onChange={(e) => setEditingBoard({ ...editingBoard, price: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-black text-amber-700 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    {isMl ? 'ബാഡ്ജ് ടാഗ് (Tag)' : 'Badge Tag'}
+                  </label>
+                  <input
+                    type="text"
+                    value={editingBoard.tag || ''}
+                    onChange={(e) => setEditingBoard({ ...editingBoard, tag: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-semibold text-stone-900 bg-stone-50 focus:bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <ImageUploadField
+                  label={isMl ? 'പാക്കേജ് ഫോട്ടോ / ബാനർ (Package Banner Photo)' : 'Package Banner Photo'}
+                  imageUrl={editingBoard.bannerUrl || ''}
+                  onChange={(val) => setEditingBoard({ ...editingBoard, bannerUrl: val })}
+                  isMl={isMl}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  {isMl ? 'ഹ്രസ്വ വിവരണം (Short Description)' : 'Short Description'}
+                </label>
+                <input
+                  type="text"
+                  value={editingBoard.description || ''}
+                  onChange={(e) => setEditingBoard({ ...editingBoard, description: e.target.value })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold text-stone-900 bg-stone-50 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  {isMl ? 'ഫീച്ചറുകൾ (കോമ ഉപയോഗിച്ച് വേർതിരിക്കുക)' : 'Features (Comma-separated)'}
+                </label>
+                <textarea
+                  rows={2}
+                  value={(editingBoard.features || []).join(', ')}
+                  onChange={(e) =>
+                    setEditingBoard({
+                      ...editingBoard,
+                      features: e.target.value.split(',').map((f) => f.trim()).filter(Boolean),
+                    })
+                  }
+                  className="w-full px-3.5 py-2 rounded-xl border border-stone-200 text-xs font-semibold text-stone-900 bg-stone-50 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditBoardModalOpen(false);
+                    setEditingBoard(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition"
+                >
+                  {isMl ? 'റദ്ദാക്കുക' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isMl ? 'മാറ്റങ്ങൾ സേവ് ചെയ്യുക' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* 7. Photoshoot Packages Management Tab (Standalone Photography & Videography Packages) */}
       {activeAdminTab === 'photoshoots' && (
         <div className="space-y-8 animate-fade-in">
@@ -5523,241 +7612,385 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
 
       {/* Customer Plan Details & Quotation Inspector Modal */}
-      {selectedLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-900/80 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-8 shadow-2xl relative border border-stone-200 my-4 max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-stone-200">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
-                  Customer Plan Breakdown
-                </span>
-                <h3 className="text-xl font-black text-stone-900 mt-1">
-                  {selectedLead.name} - Selected Wedding Package
-                </h3>
-                <p className="text-xs text-stone-500">
-                  {selectedLead.place || selectedLead.address} • Phone: {selectedLead.phone}
-                </p>
-              </div>
+      {selectedLead && isPlanModalOpen && (() => {
+        const plan = resolvePlanForLead(selectedLead);
+        const groomEvts = plan.groomEvents || {};
+        const brideEvts = plan.brideEvents || {};
+        const deliv = plan.deliverables || {};
+        const basePrice = Number(selectedLead.totalPrice) || 95000;
+        const gstPrice = Math.round(basePrice * 0.18);
+        const grandTotal = basePrice + gstPrice;
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => deleteLead(selectedLead)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 hover:text-rose-800 text-xs font-bold transition cursor-pointer"
-                  title={isMl ? 'ഈ കൊട്ടേഷൻ ഡിലീറ്റ് ചെയ്യുക' : 'Delete this quotation'}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{isMl ? 'ഡിലീറ്റ്' : 'Delete'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedLead(null)}
-                  className="p-2 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Studio Partner Box if from Studio Login */}
-            {selectedLead.studioBranding && (
-              <div className="mt-3 p-3.5 bg-indigo-50 border border-indigo-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-stone-950/85 backdrop-blur-md overflow-y-auto animate-fade-in"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setSelectedLead(null);
+                setIsPlanModalOpen(false);
+              }
+            }}
+          >
+            <div className="bg-white rounded-3xl max-w-3xl w-full p-5 sm:p-8 shadow-2xl relative border border-stone-200 my-4 max-h-[90vh] overflow-y-auto">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-stone-200">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-600 text-white px-2 py-0.5 rounded-full">
-                      🏢 Studio Partner Quote
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                      Customer Plan Breakdown
                     </span>
-                    <span className="text-xs font-black text-indigo-950">
-                      {selectedLead.studioBranding.studioName}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-indigo-800 font-semibold mt-1">
-                    <span>Owner: {selectedLead.studioBranding.ownerName}</span>
-                    <span>• Phone: {selectedLead.studioBranding.phone}</span>
-                    <span>• Place: {selectedLead.studioBranding.place || selectedLead.studioBranding.address}</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold bg-white text-indigo-900 px-2.5 py-1 rounded-xl border border-indigo-200 shrink-0">
-                  B2B Studio Portal
-                </span>
-              </div>
-            )}
-
-            {/* Standalone Photoshoot Box if Standalone Shoot */}
-            {selectedLead.photoshootDetails && (
-              <div className="mt-3 p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-center gap-3 shadow-2xs">
-                {selectedLead.photoshootDetails.imageUrl && (
-                  <img
-                    src={selectedLead.photoshootDetails.imageUrl}
-                    alt={selectedLead.photoshootDetails.title}
-                    className="w-16 h-16 object-cover rounded-xl border border-amber-200 shrink-0"
-                  />
-                )}
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-600 text-white px-2 py-0.5 rounded-full">
-                      {selectedLead.photoshootDetails.tag || 'Standalone Shoot'}
-                    </span>
-                    <span className="text-xs font-bold text-stone-500">
-                      {selectedLead.photoshootDetails.hours || 4} Hours • {selectedLead.photoshootDetails.locationType}
+                    <span className="text-[10px] font-mono font-bold text-stone-500 bg-stone-100 px-2 py-0.5 rounded-md border border-stone-250">
+                      {selectedLead.id || 'FWC-QUOTE'}
                     </span>
                   </div>
-                  <h4 className="text-base font-black text-stone-900 mt-0.5">
-                    {selectedLead.photoshootDetails.title}
-                  </h4>
-                  <p className="text-[11px] text-stone-600 line-clamp-1">
-                    {selectedLead.photoshootDetails.description}
+                  <h3 className="text-xl font-black text-stone-900 mt-1">
+                    {selectedLead.name} - Selected Wedding Package
+                  </h3>
+                  <p className="text-xs text-stone-500 flex flex-wrap items-center gap-2 mt-0.5">
+                    <span>📍 {selectedLead.place || selectedLead.address || 'Kerala'}</span>
+                    <span>•</span>
+                    <span>📞 {selectedLead.phone}</span>
+                    {selectedLead.weddingDate && (
+                      <>
+                        <span>•</span>
+                        <span>📅 {selectedLead.weddingDate}</span>
+                      </>
+                    )}
                   </p>
                 </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteLead(selectedLead);
+                      setIsPlanModalOpen(false);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 hover:text-rose-800 text-xs font-bold transition cursor-pointer"
+                    title={isMl ? 'ഈ കൊട്ടേഷൻ ഡിലീറ്റ് ചെയ്യുക' : 'Delete this quotation'}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isMl ? 'ഡിലീറ്റ്' : 'Delete'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLead(null);
+                      setIsPlanModalOpen(false);
+                    }}
+                    className="p-2 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
-            )}
 
-            {/* Quick Actions Bar */}
-            <div className="my-5 p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-600/10 to-amber-500/10 rounded-2xl border border-amber-300 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-stone-700">Quick Actions:</span>
+              {/* Package Banner */}
+              <div className="mt-4 p-3.5 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-amber-500/20 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">
+                    {isMl ? 'തിരഞ്ഞെടുത്ത പാക്കേജ് പ്ലാൻ' : 'Selected Package Plan'}
+                  </span>
+                  <h4 className="text-sm sm:text-base font-black text-stone-900 mt-0.5">
+                    {plan.packageName}
+                  </h4>
+                </div>
+                <div className="text-left sm:text-right">
+                  <span className="text-lg sm:text-xl font-black text-amber-900 block leading-tight">
+                    ₹{grandTotal.toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[10px] text-stone-500 font-bold block">
+                    (Base: ₹{basePrice.toLocaleString('en-IN')} + 18% GST)
+                  </span>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {/* PDF Quote Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsPdfModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>Preview & Download PDF</span>
-                </button>
+              {/* Comprehensive Package Price Breakdown Grid (User Requirement 4) */}
+              {(() => {
+                const planBasePkg = selectedLead.totalPrice || basePrice || 0;
+                const planOfferDisc = (selectedLead as any).offerDiscountAmount || (selectedLead as any).packageDiscount || 0;
+                const planCouponDisc = selectedLead.discountAmount || (selectedLead.discountPercentage && selectedLead.discountPercentage > 0 ? Math.round((planBasePkg * selectedLead.discountPercentage) / 100) : 0);
+                const planTaxable = selectedLead.grandTotalAfterDiscount || Math.max(0, planBasePkg - planCouponDisc);
+                const planGst = selectedLead.taxAmount || Math.round(planTaxable * 0.18);
+                const planFinal = selectedLead.grandTotal || (planTaxable + planGst);
 
-                {/* WhatsApp Full Plan with PDF Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsWhatsAppModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
-                  title="Send Quotation to Customer via WhatsApp with PDF"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>Send Quotation to WhatsApp</span>
-                </button>
+                return (
+                  <div className="mt-3 p-3.5 bg-stone-50 border border-stone-200 rounded-2xl">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-stone-500 block mb-2">
+                      {isMl ? 'പാക്കേജ് തുക & കിഴിവ് വിശദാംശങ്ങൾ (Detailed Financial Breakdown)' : 'Quotation Financial & Pricing Breakdown'}
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                      <div className="bg-white p-2.5 rounded-xl border border-stone-200">
+                        <span className="text-[10px] text-stone-500 font-bold block">{isMl ? 'പാക്കേജ് തുക' : 'Package Total'}</span>
+                        <span className="text-xs sm:text-sm font-black text-stone-900">₹{planBasePkg.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-emerald-200">
+                        <span className="text-[10px] text-emerald-700 font-bold block">{isMl ? 'ഓഫർ കിഴിവ്' : 'Offer Discount'}</span>
+                        <span className="text-xs sm:text-sm font-black text-emerald-800">
+                          {planOfferDisc > 0 ? `-₹${planOfferDisc.toLocaleString('en-IN')}` : '₹0'}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-rose-200">
+                        <span className="text-[10px] text-rose-700 font-bold block">{isMl ? 'കൂപ്പൺ / ഡിസ്കൗണ്ട്' : 'Discount'}</span>
+                        <span className="text-xs sm:text-sm font-black text-rose-800">
+                          {planCouponDisc > 0 ? `-₹${planCouponDisc.toLocaleString('en-IN')}` : '₹0'}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-stone-200">
+                        <span className="text-[10px] text-stone-500 font-bold block">{isMl ? 'ജിഎസ്ടി (18%)' : 'GST (18%)'}</span>
+                        <span className="text-xs sm:text-sm font-semibold text-stone-700">₹{planGst.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-2.5 rounded-xl shadow-xs col-span-2 sm:col-span-1">
+                        <span className="text-[10px] text-amber-100 font-bold block">{isMl ? 'ക്ലോസിംഗ് തുക' : 'Final Closed'}</span>
+                        <span className="text-xs sm:text-sm font-black">₹{planFinal.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
-                {/* Direct Call */}
-                <a
-                  href={`tel:${selectedLead.phone}`}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs shadow-xs transition"
-                >
-                  <Phone className="w-4 h-4" />
-                  <span>Call Customer</span>
-                </a>
+              {/* Prominent Owner & Creation Email Card */}
+              <div className="mt-3 p-4 bg-gradient-to-r from-stone-50 via-amber-50/30 to-stone-50 border border-amber-200 rounded-2xl shadow-xs">
+                <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-amber-200/80">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black shadow-xs">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block leading-tight">
+                        {isMl ? 'കൊട്ടേഷൻ ഓണർ വിവരങ്ങൾ (ആരാണ് & ഏത് മെയിൽ)' : 'Quotation Owner & Creation Login Details'}
+                      </span>
+                      <span className="text-sm font-black text-stone-900">
+                        {selectedLead.ownerName || selectedLead.createdByName || (selectedLead.studioBranding ? selectedLead.studioBranding.ownerName : selectedLead.name)}
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-black px-2.5 py-1 rounded-xl border ${
+                    selectedLead.studioBranding
+                      ? 'bg-indigo-100 text-indigo-900 border-indigo-200'
+                      : 'bg-amber-100 text-amber-900 border-amber-300'
+                  }`}>
+                    {selectedLead.studioBranding ? '🏢 Studio Partner' : '👤 Customer Account'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs mt-2">
+                  <div className="bg-white p-3 rounded-xl border border-stone-200">
+                    <span className="text-[10px] font-bold text-stone-400 block uppercase tracking-wider">
+                      {isMl ? 'ഓണർ പേര് (ലോഗിൻ ചെയ്തത്)' : 'Owner / Creator Name'}
+                    </span>
+                    <span className="font-black text-stone-900 text-sm">
+                      {selectedLead.ownerName || selectedLead.createdByName || (selectedLead.studioBranding ? selectedLead.studioBranding.ownerName : selectedLead.name)}
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-xl border border-amber-200">
+                    <span className="text-[10px] font-bold text-amber-700 block uppercase tracking-wider flex items-center gap-1">
+                      <Mail className="w-3 h-3 text-amber-600" />
+                      <span>{isMl ? 'ക്രിയേറ്റ് ചെയ്ത ഇമെയിൽ' : 'Created From Email'}</span>
+                    </span>
+                    <span className="font-black text-amber-900 text-xs break-all">
+                      {selectedLead.ownerEmail || selectedLead.createdByEmail || selectedLead.userEmail || (selectedLead.studioBranding ? selectedLead.studioBranding.email : selectedLead.email) || 'N/A'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-xl border border-stone-200">
+                    <span className="text-[10px] font-bold text-stone-400 block uppercase tracking-wider">
+                      {isMl ? 'ഫോൺ നമ്പർ' : 'Contact Phone'}
+                    </span>
+                    <span className="font-bold text-stone-800 text-xs">
+                      {selectedLead.userPhone || selectedLead.phone || 'N/A'}
+                    </span>
+                  </div>
+                </div>
+
+                {selectedLead.studioBranding && (
+                  <div className="mt-2 pt-2 border-t border-amber-200 text-[11px] text-indigo-900 font-bold flex flex-wrap items-center gap-3">
+                    <span>Studio: {selectedLead.studioBranding.studioName}</span>
+                    <span>• Studio Owner: {selectedLead.studioBranding.ownerName}</span>
+                    <span>• Studio Email: {selectedLead.studioBranding.email}</span>
+                  </div>
+                )}
               </div>
-            </div>
 
-            {/* Plan Details Content */}
-            <div className="space-y-5 text-xs">
-              {/* Event & Ceremony Summary */}
-              <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200">
-                <h4 className="font-black text-stone-900 text-sm mb-2 flex items-center gap-1.5">
-                  <Camera className="w-4 h-4 text-amber-600" />
-                  <span>Ceremonies & Allocated Crews</span>
-                </h4>
+              {/* Standalone Photoshoot Box if Standalone Shoot */}
+              {selectedLead.photoshootDetails && (
+                <div className="mt-3 p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-center gap-3 shadow-2xs">
+                  {selectedLead.photoshootDetails.imageUrl && (
+                    <img
+                      src={selectedLead.photoshootDetails.imageUrl}
+                      alt={selectedLead.photoshootDetails.title}
+                      className="w-16 h-16 object-cover rounded-xl border border-amber-200 shrink-0"
+                    />
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-600 text-white px-2 py-0.5 rounded-full">
+                        {selectedLead.photoshootDetails.tag || 'Standalone Shoot'}
+                      </span>
+                      <span className="text-xs font-bold text-stone-500">
+                        {selectedLead.photoshootDetails.hours || 4} Hours • {selectedLead.photoshootDetails.locationType}
+                      </span>
+                    </div>
+                    <h4 className="text-base font-black text-stone-900 mt-0.5">
+                      {selectedLead.photoshootDetails.title}
+                    </h4>
+                    <p className="text-[11px] text-stone-600 line-clamp-1">
+                      {selectedLead.photoshootDetails.description}
+                    </p>
+                  </div>
+                </div>
+              )}
 
-                {/* Groom Side */}
-                {selectedLead.groomEvents && (
+              {/* Quick Actions Bar */}
+              <div className="my-4 p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-600/10 to-amber-500/10 rounded-2xl border border-amber-300 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-stone-700">{isMl ? 'ഡയറക്റ്റ് ആക്ഷൻസ്:' : 'Quick Actions:'}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* PDF Quote Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsPdfModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>{isMl ? 'PDF കൊട്ടേഷൻ കാണുക / ഡൗൺലോഡ്' : 'Preview & Download PDF'}</span>
+                  </button>
+
+                  {/* WhatsApp Full Plan with PDF Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsWhatsAppModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                    title="Send Quotation to Customer via WhatsApp with PDF"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{isMl ? 'WhatsApp വഴി അയക്കുക' : 'Send Quotation to WhatsApp'}</span>
+                  </button>
+
+                  {/* Direct Call */}
+                  <a
+                    href={`tel:${(selectedLead.phone || '').replace(/[^\d+]/g, '')}`}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs shadow-xs transition"
+                  >
+                    <Phone className="w-4 h-4" />
+                    <span>{isMl ? 'വിളിക്കുക' : 'Call Customer'}</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Plan Details Content */}
+              <div className="space-y-4 text-xs">
+                {/* Event & Ceremony Summary */}
+                <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200">
+                  <h4 className="font-black text-stone-900 text-sm mb-2 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-amber-600" />
+                    <span>{isMl ? 'ചടങ്ങുകളും ഫോട്ടോ/വീഡിയോ ക്രൂ ടീമും' : 'Ceremonies & Allocated Crews'}</span>
+                  </h4>
+
+                  {/* Groom Side */}
                   <div className="mb-3">
                     <span className="font-extrabold text-amber-900 block mb-1">
                       🤵 Groom Side Events:
                     </span>
                     <div className="space-y-1.5">
-                      {KERALA_EVENTS.filter((e) => selectedLead.groomEvents?.[e.id]?.enabled).map((evt) => {
-                        const cfg = selectedLead.groomEvents?.[evt.id];
+                      {KERALA_EVENTS.filter((e) => groomEvts?.[e.id]?.enabled).map((evt) => {
+                        const cfg = groomEvts?.[evt.id];
                         return (
-                          <div key={evt.id} className="p-2 bg-white rounded-xl border border-stone-200">
-                            <span className="font-bold text-stone-900">{evt.nameEn}</span>
+                          <div key={evt.id} className="p-2.5 bg-white rounded-xl border border-stone-200">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-stone-900">{evt.nameEn} ({evt.nameMl})</span>
+                              {cfg?.date && <span className="text-[10px] text-stone-400 font-mono">{cfg.date}</span>}
+                            </div>
                             <div className="flex flex-wrap gap-1.5 text-[10px] mt-1 text-stone-600">
-                              {cfg?.traditionalPhotographers ? <span>{cfg.traditionalPhotographers} Trad Photo</span> : null}
-                              {cfg?.traditionalVideographers ? <span>• {cfg.traditionalVideographers} Trad Video</span> : null}
-                              {cfg?.candidPhotographers ? <span>• {cfg.candidPhotographers} Candid Photo</span> : null}
-                              {cfg?.candidVideographers ? <span>• {cfg.candidVideographers} Cinematic Video</span> : null}
-                              {cfg?.drone ? <span>• 4K Drone</span> : null}
-                              {cfg?.youtubeLive ? <span>• YouTube Live</span> : null}
-                              {cfg?.auditoriumLive ? <span>• Hall Live Display</span> : null}
-                              {cfg?.photoLivePrinting ? <span>• Live Printing</span> : null}
+                              {cfg?.traditionalPhotographers ? <span>📸 {cfg.traditionalPhotographers} Trad Photo</span> : null}
+                              {cfg?.traditionalVideographers ? <span>📹 {cfg.traditionalVideographers} Trad Video</span> : null}
+                              {cfg?.candidPhotographers ? <span>✨ {cfg.candidPhotographers} Candid Photo</span> : null}
+                              {cfg?.candidVideographers ? <span>🎬 {cfg.candidVideographers} Cinematic Video</span> : null}
+                              {cfg?.drone ? <span>🛸 4K Drone</span> : null}
+                              {cfg?.youtubeLive ? <span>🔴 YouTube Live</span> : null}
+                              {cfg?.auditoriumLive ? <span>📺 Hall Live Display</span> : null}
+                              {cfg?.photoLivePrinting ? <span>🖨️ Live Printing</span> : null}
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   </div>
-                )}
 
-                {/* Bride Side */}
-                {selectedLead.brideEvents && (
-                  <div>
-                    <span className="font-extrabold text-rosewood-900 block mb-1">
-                      👰 Bride Side Events:
-                    </span>
-                    <div className="space-y-1.5">
-                      {KERALA_EVENTS.filter((e) => selectedLead.brideEvents?.[e.id]?.enabled).map((evt) => {
-                        const cfg = selectedLead.brideEvents?.[evt.id];
-                        return (
-                          <div key={evt.id} className="p-2 bg-white rounded-xl border border-stone-200">
-                            <span className="font-bold text-stone-900">{evt.nameEn}</span>
-                            <div className="flex flex-wrap gap-1.5 text-[10px] mt-1 text-stone-600">
-                              {cfg?.traditionalPhotographers ? <span>{cfg.traditionalPhotographers} Trad Photo</span> : null}
-                              {cfg?.traditionalVideographers ? <span>• {cfg.traditionalVideographers} Trad Video</span> : null}
-                              {cfg?.candidPhotographers ? <span>• {cfg.candidPhotographers} Candid Photo</span> : null}
-                              {cfg?.candidVideographers ? <span>• {cfg.candidVideographers} Cinematic Video</span> : null}
-                              {cfg?.drone ? <span>• 4K Drone</span> : null}
-                              {cfg?.youtubeLive ? <span>• YouTube Live</span> : null}
-                              {cfg?.auditoriumLive ? <span>• Hall Live Display</span> : null}
-                              {cfg?.photoLivePrinting ? <span>• Live Printing</span> : null}
+                  {/* Bride Side */}
+                  {brideEvts && Object.values(brideEvts).some((e) => (e as any)?.enabled) && (
+                    <div>
+                      <span className="font-extrabold text-rose-900 block mb-1">
+                        👰 Bride Side Events:
+                      </span>
+                      <div className="space-y-1.5">
+                        {KERALA_EVENTS.filter((e) => brideEvts?.[e.id]?.enabled).map((evt) => {
+                          const cfg = brideEvts?.[evt.id];
+                          return (
+                            <div key={evt.id} className="p-2.5 bg-white rounded-xl border border-stone-200">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-stone-900">{evt.nameEn} ({evt.nameMl})</span>
+                                {cfg?.date && <span className="text-[10px] text-stone-400 font-mono">{cfg.date}</span>}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 text-[10px] mt-1 text-stone-600">
+                                {cfg?.traditionalPhotographers ? <span>📸 {cfg.traditionalPhotographers} Trad Photo</span> : null}
+                                {cfg?.traditionalVideographers ? <span>📹 {cfg.traditionalVideographers} Trad Video</span> : null}
+                                {cfg?.candidPhotographers ? <span>✨ {cfg.candidPhotographers} Candid Photo</span> : null}
+                                {cfg?.candidVideographers ? <span>🎬 {cfg.candidVideographers} Cinematic Video</span> : null}
+                                {cfg?.drone ? <span>🛸 4K Drone</span> : null}
+                                {cfg?.youtubeLive ? <span>🔴 YouTube Live</span> : null}
+                                {cfg?.auditoriumLive ? <span>📺 Hall Live Display</span> : null}
+                                {cfg?.photoLivePrinting ? <span>🖨️ Live Printing</span> : null}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Deliverables Summary */}
-              {selectedLead.deliverables && (
+                {/* Deliverables Summary */}
                 <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200">
                   <h4 className="font-black text-stone-900 text-sm mb-2 flex items-center gap-1.5">
                     <Film className="w-4 h-4 text-amber-600" />
-                    <span>Deliverables & Keepsakes</span>
+                    <span>{isMl ? 'ഡെലിവറബിളുകളും ആൽബങ്ങളും' : 'Deliverables & Keepsakes'}</span>
                   </h4>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="bg-white p-2.5 rounded-xl border border-stone-200">
                       <span className="text-[10px] text-stone-400 font-bold uppercase block">Video Output</span>
                       <span className="font-bold text-stone-900">
-                        {selectedLead.deliverables.videoQuality === '4k' ? '4K Ultra HD' : 'Full HD (1080p)'}
+                        {deliv.videoQuality === '4k' ? '4K Ultra HD Cinema' : 'Full HD (1080p)'}
                       </span>
                       <div className="text-[11px] text-stone-600 mt-1">
-                        {selectedLead.deliverables.fullLengthVideo ? 'Full Film • ' : ''}
-                        {selectedLead.deliverables.highlightVideo ? '3-5 min Highlight • ' : ''}
-                        {selectedLead.deliverables.teaserVideo ? 'Teaser Promo • ' : ''}
-                        {selectedLead.deliverables.reelsCount ? `${selectedLead.deliverables.reelsCount} Reels` : ''}
+                        {deliv.fullLengthVideo ? 'Full Film • ' : ''}
+                        {deliv.highlightVideo ? '3-5 min Highlight • ' : ''}
+                        {deliv.teaserVideo ? 'Teaser Promo • ' : ''}
+                        {deliv.reelsCount ? `${deliv.reelsCount} Viral Reels` : ''}
                       </div>
                     </div>
 
                     <div className="bg-white p-2.5 rounded-xl border border-stone-200">
                       <span className="text-[10px] text-stone-400 font-bold uppercase block">Master Albums</span>
                       <span className="font-bold text-stone-900">
-                        {selectedLead.deliverables.mainAlbumsCount} Albums ({selectedLead.deliverables.mainAlbumSheets} Sheets)
+                        {deliv.mainAlbumsCount || 1} Albums ({deliv.mainAlbumSheets || 35} Sheets)
                       </span>
                       <p className="text-[11px] text-stone-600 mt-0.5 capitalize">
                         Cover: {(() => {
-                          const t = selectedLead.deliverables.albumPaperType;
+                          const t = deliv.albumPaperType;
+                          if (typeof t !== 'string') return 'Glass Cover';
                           if (t === 'normal') return 'Normal Cover';
                           if (t === 'premium') return 'Premium Cover';
                           if (t === 'extra_premium') return 'Extra Premium Cover';
                           if (t === 'leather') return 'Leather Cover';
                           if (t === 'glass' || t === 'acrylic_cover') return 'Glass Cover';
                           if (t === 'full_glass' || t === 'velvet_box') return 'Full Glass Cover';
-                          return (t ? t.replace(/_/g, ' ') : 'Normal') + ' Cover';
+                          return t.replace(/_/g, ' ') + ' Cover';
                         })()}
                       </p>
                     </div>
@@ -5765,128 +7998,155 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="bg-white p-2.5 rounded-xl border border-stone-200">
                       <span className="text-[10px] text-stone-400 font-bold uppercase block">Preset Photo Frames</span>
                       <p className="text-[11px] text-stone-700 font-bold">
-                        {selectedLead.deliverables.frames_8x12 ? `8x12 (${selectedLead.deliverables.frames_8x12})  ` : ''}
-                        {selectedLead.deliverables.frames_18x12 ? `18x12 (${selectedLead.deliverables.frames_18x12})  ` : ''}
-                        {selectedLead.deliverables.frames_15x20 ? `15x20 Master Canvas (${selectedLead.deliverables.frames_15x20})` : ''}
+                        {deliv.frames_18x12 ? `18x12 Master Frame (${deliv.frames_18x12})  ` : ''}
+                        {deliv.frames_8x12 ? `8x12 Wall Frames (${deliv.frames_8x12})  ` : ''}
+                        {deliv.frames_15x20 ? `15x20 Master Canvas (${deliv.frames_15x20})` : ''}
+                        {!deliv.frames_18x12 && !deliv.frames_8x12 && !deliv.frames_15x20 ? '18x12 Master Frame (1)' : ''}
                       </p>
                     </div>
 
                     <div className="bg-white p-2.5 rounded-xl border border-stone-200">
                       <span className="text-[10px] text-stone-400 font-bold uppercase block">Media & Add-ons</span>
                       <p className="text-[11px] text-stone-700 font-bold">
-                        {selectedLead.deliverables.penDriveCount ? `USB Pen Drives: ${selectedLead.deliverables.penDriveCount}  ` : ''}
-                        {selectedLead.deliverables.penDriveBoxCount ? `Boxes: ${selectedLead.deliverables.penDriveBoxCount}  ` : ''}
-                        {selectedLead.deliverables.miniAlbumsCount ? `Mini Albums: ${selectedLead.deliverables.miniAlbumsCount}  ` : ''}
+                        {deliv.penDriveCount ? `USB Pen Drives: ${deliv.penDriveCount}  ` : 'USB Pen Drive: 1  '}
+                        {deliv.penDriveBoxCount ? `Wooden Boxes: ${deliv.penDriveBoxCount}  ` : ''}
+                        {deliv.miniAlbumsCount ? `Mini Albums: ${deliv.miniAlbumsCount}  ` : ''}
                       </p>
                     </div>
                   </div>
                 </div>
-              )}
 
-              {/* Total Calculation & Divided Payment Schedule */}
-              <div className="p-4 bg-stone-900 text-white rounded-2xl">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-stone-800">
-                  <div>
-                    <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider block">
-                      Estimated Total Investment
-                    </span>
-                    <span className="text-2xl font-black text-white">
-                      ₹{((selectedLead.totalPrice || 0) + Math.round((selectedLead.totalPrice || 0) * 0.18)).toLocaleString('en-IN')}
-                    </span>
-                    <span className="text-[10px] text-stone-400 block">
-                      (Base: ₹{(selectedLead.totalPrice || 0).toLocaleString('en-IN')} + GST 18%: ₹{Math.round((selectedLead.totalPrice || 0) * 0.18).toLocaleString('en-IN')})
-                    </span>
-                  </div>
-
-                  <div className="text-left sm:text-right">
-                    <span className="text-[10px] text-stone-400 uppercase font-bold block mb-1">
-                      {isMl ? 'നിലവിലെ സ്റ്റാറ്റസ്' : 'Current Status'}
-                    </span>
-                    {(() => {
-                      const drawerStatusCfg = getLeadStatusConfig(selectedLead.status || 'New', isMl);
-                      return (
-                        <div className="inline-flex items-center gap-1.5">
-                          <span className={`w-2.5 h-2.5 rounded-full ${drawerStatusCfg.dotClass}`} />
-                          <select
-                            value={selectedLead.status || 'New'}
-                            onChange={(e) =>
-                              updateLeadStatus(
-                                selectedLead.id || 0,
-                                e.target.value as CustomerLead['status']
-                              )
-                            }
-                            className={`border rounded-lg px-2.5 py-1 text-xs font-black cursor-pointer shadow-xs transition focus:outline-hidden focus:ring-2 ${drawerStatusCfg.selectClass}`}
-                          >
-                            <option value="New" className="bg-white text-blue-900 font-bold">
-                              🔵 {isMl ? 'പുതിയത് (New)' : 'New Lead'}
-                            </option>
-                            <option value="Contacted" className="bg-white text-amber-900 font-bold">
-                              🟡 {isMl ? 'വിളിച്ചു (Contacted)' : 'Contacted'}
-                            </option>
-                            <option value="Quoted" className="bg-white text-purple-900 font-bold">
-                              🟣 {isMl ? 'കൊട്ടേഷൻ അയച്ചു (Quoted)' : 'Quoted'}
-                            </option>
-                            <option value="Booked" className="bg-white text-rose-900 font-bold">
-                              🔴 {isMl ? 'ബുക്കിംഗ് ഉറപ്പിച്ചു (Booked)' : 'Booked'}
-                            </option>
-                            <option value="Completed" className="bg-white text-emerald-900 font-bold">
-                              🟢 {isMl ? 'പൂർത്തിയായി (Completed)' : 'Completed'}
-                            </option>
-                          </select>
+                {/* Additional Selected Services if any */}
+                {selectedLead.selectedServices && selectedLead.selectedServices.length > 0 && (
+                  <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200">
+                    <h4 className="font-black text-stone-900 text-sm mb-2 flex items-center gap-1.5">
+                      <UtensilsCrossed className="w-4 h-4 text-amber-600" />
+                      <span>{isMl ? 'അഡീഷണൽ സർവീസുകൾ' : 'Additional Selected Services'}</span>
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {selectedLead.selectedServices.map((srv, sIdx) => (
+                        <div key={sIdx} className="bg-white p-2.5 rounded-xl border border-stone-200 flex items-center justify-between">
+                          <span className="font-bold text-stone-900">{srv.title}</span>
+                          <span className="font-black text-amber-900">₹{(srv.price || 0).toLocaleString('en-IN')}</span>
                         </div>
-                      );
-                    })()}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                  <div className="bg-stone-800/80 p-2.5 rounded-xl border border-stone-700">
-                    <span className="text-[10px] text-stone-400 font-bold block">1. Advance (25%)</span>
-                    <span className="font-extrabold text-amber-300">
-                      ₹{Math.round(((selectedLead.totalPrice || 0) * 1.18) * 0.25).toLocaleString('en-IN')}
-                    </span>
+                {/* Total Calculation & Divided Payment Schedule */}
+                <div className="p-4 bg-stone-900 text-white rounded-2xl">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-stone-800">
+                    <div>
+                      <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider block">
+                        Estimated Total Investment
+                      </span>
+                      <span className="text-2xl font-black text-white">
+                        ₹{grandTotal.toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] text-stone-400 block">
+                        (Base: ₹{basePrice.toLocaleString('en-IN')} + GST 18%: ₹{gstPrice.toLocaleString('en-IN')})
+                      </span>
+                    </div>
+
+                    <div className="text-left sm:text-right">
+                      <span className="text-[10px] text-stone-400 uppercase font-bold block mb-1">
+                        {isMl ? 'നിലവിലെ സ്റ്റാറ്റസ്' : 'Current Status'}
+                      </span>
+                      {(() => {
+                        const drawerStatusCfg = getLeadStatusConfig(selectedLead.status || 'New', isMl);
+                        return (
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className={`w-2.5 h-2.5 rounded-full ${drawerStatusCfg.dotClass}`} />
+                            <select
+                              value={selectedLead.status || 'New'}
+                              onChange={(e) =>
+                                updateLeadStatus(
+                                  selectedLead.id || 0,
+                                  e.target.value as CustomerLead['status']
+                                )
+                              }
+                              className={`border rounded-lg px-2.5 py-1 text-xs font-black cursor-pointer shadow-xs transition focus:outline-hidden focus:ring-2 ${drawerStatusCfg.selectClass}`}
+                            >
+                              <option value="New" className="bg-white text-blue-900 font-bold">
+                                🔵 {isMl ? 'പുതിയത് (New)' : 'New Lead'}
+                              </option>
+                              <option value="Contacted" className="bg-white text-amber-900 font-bold">
+                                🟡 {isMl ? 'വിളിച്ചു (Contacted)' : 'Contacted'}
+                              </option>
+                              <option value="Quoted" className="bg-white text-purple-900 font-bold">
+                                🟣 {isMl ? 'കൊട്ടേഷൻ അയച്ചു (Quoted)' : 'Quoted'}
+                              </option>
+                              <option value="Booked" className="bg-white text-rose-900 font-bold">
+                                🔴 {isMl ? 'ബുക്കിംഗ് ഉറപ്പിച്ചു (Booked)' : 'Booked'}
+                              </option>
+                              <option value="Completed" className="bg-white text-emerald-900 font-bold">
+                                🟢 {isMl ? 'പൂർത്തിയായി (Completed)' : 'Completed'}
+                              </option>
+                            </select>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
-                  <div className="bg-stone-800/80 p-2.5 rounded-xl border border-stone-700">
-                    <span className="text-[10px] text-stone-400 font-bold block">2. On Shoot (50%)</span>
-                    <span className="font-extrabold text-amber-300">
-                      ₹{Math.round(((selectedLead.totalPrice || 0) * 1.18) * 0.50).toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  <div className="bg-stone-800/80 p-2.5 rounded-xl border border-stone-700">
-                    <span className="text-[10px] text-stone-400 font-bold block">3. Final Delivery (25%)</span>
-                    <span className="font-extrabold text-amber-300">
-                      ₹{Math.round(((selectedLead.totalPrice || 0) * 1.18) * 0.25).toLocaleString('en-IN')}
-                    </span>
+
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <div className="bg-stone-800/80 p-2.5 rounded-xl border border-stone-700">
+                      <span className="text-[10px] text-stone-400 font-bold block">1. Advance Booking (25%)</span>
+                      <span className="font-extrabold text-amber-300">
+                        ₹{Math.round(grandTotal * 0.25).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="bg-stone-800/80 p-2.5 rounded-xl border border-stone-700">
+                      <span className="text-[10px] text-stone-400 font-bold block">2. On Wedding Shoot (50%)</span>
+                      <span className="font-extrabold text-amber-300">
+                        ₹{Math.round(grandTotal * 0.50).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="bg-stone-800/80 p-2.5 rounded-xl border border-stone-700">
+                      <span className="text-[10px] text-stone-400 font-bold block">3. Final Delivery (25%)</span>
+                      <span className="font-extrabold text-amber-300">
+                        ₹{Math.round(grandTotal * 0.25).toLocaleString('en-IN')}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
-      {/* PDF Quotation Preview Modal from Admin */}
-      {selectedLead && isPdfModalOpen && (
+      {/* PDF Quotation Preview Modal from Admin (also mounts in background when WhatsApp modal is active for identical Master PDF capture) */}
+      {selectedLead && (isPdfModalOpen || isWhatsAppModalOpen) && (
         <PdfQuotationView
           isOpen={isPdfModalOpen}
-          onClose={() => setIsPdfModalOpen(false)}
+          isBackgroundRenderer={!isPdfModalOpen && isWhatsAppModalOpen}
+          onClose={() => {
+            setIsPdfModalOpen(false);
+            if (!isPlanModalOpen) {
+              setSelectedLead(null);
+            }
+          }}
           lead={selectedLead}
           side={selectedLead.side || 'both'}
           calculation={{
-            totalPrice: selectedLead.totalPrice || 0,
+            totalPrice: Number(selectedLead.totalPrice) || 95000,
             items: [],
             eventTotals: {},
             deliverablesTotal: 0,
             groomCrewTotal: 0,
             brideCrewTotal: 0,
-            photographyTotal: selectedLead.totalPrice || 0,
+            photographyTotal: Number(selectedLead.totalPrice) || 95000,
             otherServicesTotal: 0,
           }}
           studioContact={studioContact}
           language={language}
-          groomEvents={selectedLead.groomEvents}
-          brideEvents={selectedLead.brideEvents}
-          deliverables={selectedLead.deliverables}
+          groomEvents={resolvePlanForLead(selectedLead).groomEvents}
+          brideEvents={resolvePlanForLead(selectedLead).brideEvents}
+          deliverables={resolvePlanForLead(selectedLead).deliverables}
+          studioUser={selectedLead.studioBranding || undefined}
+          selectedServices={selectedLead.selectedServices || []}
         />
       )}
 
@@ -5894,16 +8154,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {selectedLead && isWhatsAppModalOpen && (
         <WhatsAppShareModal
           isOpen={isWhatsAppModalOpen}
-          onClose={() => setIsWhatsAppModalOpen(false)}
+          onClose={() => {
+            setIsWhatsAppModalOpen(false);
+            if (!isPlanModalOpen) {
+              setSelectedLead(null);
+            }
+          }}
           lead={selectedLead}
           calculation={{
-            totalPrice: selectedLead.totalPrice || 0,
+            totalPrice: Number(selectedLead.totalPrice) || 95000,
             items: [],
             eventTotals: {},
             deliverablesTotal: 0,
             groomCrewTotal: 0,
             brideCrewTotal: 0,
-            photographyTotal: selectedLead.totalPrice || 0,
+            photographyTotal: Number(selectedLead.totalPrice) || 95000,
             otherServicesTotal: 0,
           }}
           userRole="studio"

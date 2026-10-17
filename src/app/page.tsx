@@ -55,7 +55,13 @@ import {
   subscribeCoupons,
   subscribePhotoshoots,
   saveCustomerUserToCloud,
+  saveStudioPartnerToCloud,
+  subscribeCustomerUsers,
+  subscribeStudioPartners,
+  recordUserLogin,
 } from '@/lib/firestoreSync';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { SidebarNav, MainNavTab } from '@/components/SidebarNav';
 import { RoleAuthModal } from '@/components/RoleAuthModal';
 import { QuotesDashboard } from '@/components/QuotesDashboard';
@@ -75,6 +81,7 @@ import { OffersAndHighlightBoards } from '@/components/OffersAndHighlightBoards'
 import { GallerySection } from '@/components/GallerySection';
 import { PhotoshootSection } from '@/components/PhotoshootSection';
 import { AiPlannerModal } from '@/components/AiPlannerModal';
+import { ProfileSettingsView } from '@/components/ProfileSettingsView';
 import { AiChatbotWidget } from '@/components/AiChatbotWidget';
 import { AppUserSession } from '@/types';
 import {
@@ -125,9 +132,11 @@ export default function Home() {
 
   // Customer User Authentication State
   const [customerUser, setCustomerUser] = useState<CustomerUser | null>(null);
+  const [customerUsers, setCustomerUsers] = useState<CustomerUser[]>([]);
 
   // Studio Partner Authentication State (B2B Studio Portal)
   const [studioUser, setStudioUser] = useState<StudioUser | null>(null);
+  const [studioPartners, setStudioPartners] = useState<StudioUser[]>([]);
   const [isStudioAuthModalOpen, setIsStudioAuthModalOpen] = useState(false);
 
   // Coupons State & Active Applied Coupon
@@ -223,6 +232,10 @@ export default function Home() {
   // Load saved state on client mount & subscribe to Cloud Firestore real-time updates
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      if (window.location.hostname === '127.0.0.1') {
+        window.location.replace(window.location.href.replace('127.0.0.1', 'localhost'));
+        return;
+      }
       const savedLang = localStorage.getItem('framlu_lang') || localStorage.getItem('lumina_lang');
       if (savedLang === 'ml' || savedLang === 'en') {
         setLanguage(savedLang);
@@ -363,6 +376,22 @@ export default function Home() {
         }
       }
 
+      const savedCustUsers = localStorage.getItem('framlu_customer_users_cache');
+      if (savedCustUsers) {
+        try {
+          const parsed = JSON.parse(savedCustUsers);
+          if (Array.isArray(parsed) && parsed.length > 0) setCustomerUsers(parsed);
+        } catch (e) {}
+      }
+
+      const savedStudios = localStorage.getItem('framlu_studio_partners_cache');
+      if (savedStudios) {
+        try {
+          const parsed = JSON.parse(savedStudios);
+          if (Array.isArray(parsed) && parsed.length > 0) setStudioPartners(parsed);
+        } catch (e) {}
+      }
+
       const savedPhotoshoots = localStorage.getItem('framlu_wedding_photoshoots');
       if (savedPhotoshoots) {
         try {
@@ -408,6 +437,83 @@ export default function Home() {
     const unsubPhotoshoots = subscribePhotoshoots((p) => {
       if (p && p.length > 0) setPhotoshoots(p);
     });
+    const unsubCustUsers = subscribeCustomerUsers((users) => {
+      setCustomerUsers(users);
+      // Auto-logout if current customer account was deleted in backend
+      const currentRaw = typeof window !== 'undefined' ? localStorage.getItem('lfb_user_session') : null;
+      if (currentRaw && users.length > 0) {
+        try {
+          const sess = JSON.parse(currentRaw);
+          if (sess.role === 'customer') {
+            const sessEmail = sess.email?.toLowerCase().trim();
+            const sessPhone = sess.phone?.replace(/\D/g, '');
+            const exists = users.some(
+              (u) =>
+                u.status !== 'deleted' &&
+                ((sessEmail && u.email?.toLowerCase().trim() === sessEmail) ||
+                 (sessPhone && sessPhone.length >= 10 && (u.phone || '').replace(/\D/g, '').slice(-10) === sessPhone.slice(-10)))
+            );
+            if (!exists) {
+              handleRoleLogout();
+            }
+          }
+        } catch (e) {}
+      }
+    });
+    const unsubStudioPartners = subscribeStudioPartners((studios) => {
+      setStudioPartners(studios);
+      // Auto-logout if current studio account was deleted in backend
+      const currentRaw = typeof window !== 'undefined' ? localStorage.getItem('lfb_user_session') : null;
+      if (currentRaw && studios.length > 0) {
+        try {
+          const sess = JSON.parse(currentRaw);
+          if (sess.role === 'studio') {
+            const sessEmail = sess.email?.toLowerCase().trim();
+            const sessPhone = sess.phone?.replace(/\D/g, '');
+            const exists = studios.some(
+              (s) =>
+                s.status !== 'deleted' &&
+                ((sessEmail && s.email?.toLowerCase().trim() === sessEmail) ||
+                 (sessPhone && sessPhone.length >= 10 && (s.phone || '').replace(/\D/g, '').slice(-10) === sessPhone.slice(-10)))
+            );
+            if (!exists) {
+              handleRoleLogout();
+            }
+          }
+        } catch (e) {}
+      }
+    });
+
+    // Cross-tab / intra-window account deletion listener
+    const handleAccountDeletedEvent = (e: any) => {
+      const detail = e.detail;
+      const currentRaw = typeof window !== 'undefined' ? localStorage.getItem('lfb_user_session') : null;
+      if (detail && currentRaw) {
+        try {
+          const sess = JSON.parse(currentRaw);
+          const sessEmail = (sess.email || '').toLowerCase().trim();
+          const sessPhone = (sess.phone || '').replace(/\D/g, '');
+          const sessUserId = (sess.userId || '').toLowerCase().trim();
+
+          const targetEmail = (detail.email || '').toLowerCase().trim();
+          const targetId = (detail.docId || detail.id || '').toLowerCase().trim();
+          const targetUserId = (detail.userId || '').toLowerCase().trim();
+
+          if (
+            (targetEmail && sessEmail === targetEmail) ||
+            (targetUserId && sessUserId === targetUserId) ||
+            (targetId && targetId.includes(sessUserId)) ||
+            (detail.phone && sessPhone && sessPhone.slice(-10) === String(detail.phone).slice(-10))
+          ) {
+            handleRoleLogout();
+          }
+        } catch (err) {}
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('framlu_user_deleted', handleAccountDeletedEvent);
+    }
 
     return () => {
       unsubContact();
@@ -421,6 +527,11 @@ export default function Home() {
       unsubGallery();
       unsubCoupons();
       unsubPhotoshoots();
+      unsubCustUsers();
+      unsubStudioPartners();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('framlu_user_deleted', handleAccountDeletedEvent);
+      }
     };
   }, []);
 
@@ -869,6 +980,7 @@ export default function Home() {
 
     // Save/update user profile in Cloud Firestore
     saveCustomerUserToCloud(u).catch((err) => console.warn('Background save customer user note:', err));
+    recordUserLogin(session).catch((err) => console.warn('Background record login note:', err));
 
     // Check if this customer already has existing saved leads by email, phone, or userId
     const cleanEmail = u.email?.trim().toLowerCase();
@@ -907,87 +1019,48 @@ export default function Home() {
       }
       setActiveLead(existingCustomerLead);
     } else {
-      // First time lead creation for new email
-      const isStandalone = activeLead?.leadType === 'standalone_photoshoot' && selectedPhotoshoot !== 'wedding';
-      const baseSub = isStandalone
-        ? (activeLead.totalPrice || activeLead.photoshootDetails?.totalPrice || calculation.totalPrice)
-        : calculation.totalPrice;
-
-      const discountPct = appliedCoupon?.discountPercentage || 0;
-      const discountAmt = discountPct > 0 ? Math.round((baseSub * discountPct) / 100) : 0;
-      const discountedTotal = Math.max(0, baseSub - discountAmt);
-      const tax = Math.round(discountedTotal * 0.18);
-
-      const newLead: CustomerLead = {
-        id: `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      // User has logged in, but has not yet created a quotation.
+      // Update template with customer profile details without creating any blank/dummy quotation.
+      setActiveLead((prev) => ({
+        ...prev,
+        ownerName: u.name,
         name: u.name,
         phone: u.phone,
         email: u.email,
+        address: u.address || u.place || 'Kerala',
+        place: u.place || 'കായംകുളം',
         userId: session.userId,
-        address: u.address,
-        place: u.place,
-        weddingDate: isStandalone ? (activeLead.photoshootDetails?.date || activeLead.weddingDate || '2026-12-20') : (activeLead.weddingDate || '2026-12-20'),
-        venueLocation: isStandalone ? (activeLead.photoshootDetails?.venueLocation || activeLead.venueLocation || u.place) : (activeLead.venueLocation || u.place),
-        status: 'Access Sent',
-        leadType: isStandalone ? 'standalone_photoshoot' : 'wedding',
-        photoshootType: isStandalone ? activeLead.photoshootType : undefined,
-        photoshootDetails: isStandalone ? activeLead.photoshootDetails : undefined,
-        side,
-        groomEvents: isStandalone ? undefined : groomEvents,
-        brideEvents: isStandalone ? undefined : brideEvents,
-        deliverables: isStandalone && activeLead.photoshootDetails?.deliverables ? activeLead.photoshootDetails.deliverables : deliverables,
-        selectedServices: selectedOtherServices,
-        airlineReservations: u.airlineReservations || [],
-        accessRequests: [
-          {
-            id: `ACC-INIT-${Date.now().toString().slice(-5)}`,
-            title: `Customer Registered & Quotation Access Initialized`,
-            titleMl: `കസ്റ്റമർ രജിസ്റ്റർ ചെയ്തു, കൊട്ടേഷൻ ആക്സസ് തയ്യാറായി`,
-            type: 'quotation_access',
-            requestedAt: new Date().toISOString(),
-            status: 'Sent',
-            notes: `Customer Email: ${u.email}`,
-          },
-        ],
-        totalPrice: baseSub,
-        couponCode: appliedCoupon?.code,
-        discountPercentage: discountPct,
-        discountAmount: discountAmt,
-        grandTotalAfterDiscount: discountedTotal,
-        taxAmount: tax,
-        grandTotal: discountedTotal + tax,
-        source: 'customer',
-        createdBy: 'customer',
-        createdAt: new Date().toISOString(),
-      };
-
-      setActiveLead(newLead);
-
-      // Auto record in CRM leads (Local & Cloud Firestore)
-      setLeads((prev) => {
-        const updated = [newLead, ...prev];
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('framlu_wedding_leads', JSON.stringify(updated));
-          localStorage.setItem('lumina_wedding_leads', JSON.stringify(updated));
-        }
-        return updated;
-      });
-
-      // Save to Cloud Firestore in background
-      await saveLeadToCloud(newLead);
+      }));
     }
 
-    // Proactively open Customer Dashboard so they can immediately see their data!
-    setIsCustomerDashboardOpen(true);
+    // Open Customer Dashboard if they have existing leads
+    if (existingCustomerLead) {
+      setIsCustomerDashboardOpen(true);
+    }
   };
 
   const handleCustomerLogout = () => {
+    try {
+      if (auth) {
+        signOut(auth).catch(() => {});
+      }
+    } catch (e) {}
     setCustomerUser(null);
+    setUserSession((prev) => (prev?.role === 'customer' ? null : prev));
     setIsCustomerDashboardOpen(false);
     setEditingLeadId(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('framlu_wedding_user');
       localStorage.removeItem('lumina_wedding_user');
+      const currentRaw = localStorage.getItem('lfb_user_session');
+      if (currentRaw) {
+        try {
+          const sess = JSON.parse(currentRaw);
+          if (sess.role === 'customer') {
+            localStorage.removeItem('lfb_user_session');
+          }
+        } catch (e) {}
+      }
     }
   };
 
@@ -1010,10 +1083,25 @@ export default function Home() {
   };
 
   const handleStudioLogout = () => {
+    try {
+      if (auth) {
+        signOut(auth).catch(() => {});
+      }
+    } catch (e) {}
     setStudioUser(null);
+    setUserSession((prev) => (prev?.role === 'studio' ? null : prev));
     if (typeof window !== 'undefined') {
       localStorage.removeItem('framlu_studio_partner');
       localStorage.removeItem('wedding_studio_user');
+      const currentRaw = localStorage.getItem('lfb_user_session');
+      if (currentRaw) {
+        try {
+          const sess = JSON.parse(currentRaw);
+          if (sess.role === 'studio') {
+            localStorage.removeItem('lfb_user_session');
+          }
+        } catch (e) {}
+      }
     }
   };
 
@@ -1089,6 +1177,10 @@ export default function Home() {
     const updatedLead: CustomerLead = {
       ...activeLead,
       id: editingLeadId,
+      ownerName: userSession?.name || customerUser?.name || activeLead.ownerName || activeLead.name,
+      ownerEmail: userSession?.email || customerUser?.email || activeLead.ownerEmail || activeLead.createdByEmail || activeLead.email,
+      createdByName: userSession?.name || customerUser?.name || activeLead.createdByName || activeLead.name,
+      createdByEmail: userSession?.email || customerUser?.email || activeLead.createdByEmail || activeLead.email,
       side,
       groomEvents,
       brideEvents,
@@ -1186,16 +1278,28 @@ export default function Home() {
     const tax = Math.round(discountedTotal * 0.18);
     const isStudio = userSession?.role === 'studio' || !!studioUser;
 
-    const targetId = editingLeadId || leadData.id || `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const isEditing = Boolean(editingLeadId);
+    const targetId =
+      editingLeadId ||
+      `FWC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const effectiveOwnerName = userSession?.name || customerUser?.name || leadData.ownerName || leadData.name;
+    const effectiveOwnerEmail = userSession?.email || customerUser?.email || leadData.ownerEmail || leadData.createdByEmail || leadData.email;
 
     const fullLead: CustomerLead = {
       ...leadData,
       id: targetId,
+      ownerName: effectiveOwnerName,
+      ownerEmail: effectiveOwnerEmail,
+      createdByName: effectiveOwnerName,
+      createdByEmail: effectiveOwnerEmail,
+      name: leadData.name || effectiveOwnerName,
+      email: leadData.email || effectiveOwnerEmail,
+      phone: leadData.phone || userSession?.phone || customerUser?.phone || '',
       userId: userSession?.userId || customerUser?.userId,
-      userEmail: userSession?.email || customerUser?.email || leadData.email,
+      userEmail: effectiveOwnerEmail,
       userPhone: userSession?.phone || customerUser?.phone || leadData.phone,
       createdByUserId: userSession?.userId,
-      createdByEmail: userSession?.email,
       createdByPhone: userSession?.phone,
       createdByRole: userSession?.role || (isStudio ? 'studio' : 'customer'),
       leadType: isStandalone ? 'standalone_photoshoot' : 'wedding',
@@ -1225,15 +1329,17 @@ export default function Home() {
         address: userSession.address || userSession.place || 'Kayamkulam',
         place: userSession.place || 'Kayamkulam',
       } : undefined),
-      createdAt: activeLead.createdAt || new Date().toISOString(),
-      lastEditedAt: editingLeadId ? new Date().toISOString() : undefined,
-      revisionsCount: editingLeadId ? (activeLead.revisionsCount || 0) + 1 : undefined,
-      status: editingLeadId ? 'Re-submitted' : 'Access Sent',
+      createdAt: isEditing ? (activeLead.createdAt || new Date().toISOString()) : new Date().toISOString(),
+      lastEditedAt: isEditing ? new Date().toISOString() : undefined,
+      revisionsCount: isEditing ? (activeLead.revisionsCount || 0) + 1 : undefined,
+      status: isEditing ? 'Re-submitted' : 'Access Sent',
     };
 
     setActiveLead(fullLead);
     setEditingLeadId(null);
     setIsLeadModalOpen(false);
+    // Instant UI reaction: Open PDF modal right away without waiting on network
+    setIsPdfModalOpen(true);
 
     setLeads((prev) => {
       const exists = prev.some((l) => l.id === fullLead.id);
@@ -1245,61 +1351,234 @@ export default function Home() {
       return updated;
     });
 
-    // Save lead to Cloud Firestore
-    await saveLeadToCloud(fullLead);
-
-    setIsPdfModalOpen(true);
+    // Save lead to Cloud Firestore in background
+    saveLeadToCloud(fullLead).catch((err) => console.warn('Cloud save error on quotation submit:', err));
   };
 
-  const handleRoleAuthSuccess = (session: AppUserSession) => {
+  const handleRoleAuthSuccess = async (session: AppUserSession) => {
+    // 1. Immediately close modal & activate session so user enters app with zero lag
+    setIsRoleAuthModalOpen(false);
     setUserSession(session);
     if (typeof window !== 'undefined') {
       localStorage.setItem('lfb_user_session', JSON.stringify(session));
     }
+
+    // 2. Non-blocking user login logging in background
+    recordUserLogin(session).catch((err) => console.warn('Record login err in page:', err));
+
     if (session.role === 'customer') {
+      const custEmail = session.email || `${session.userId || 'user'}@framluweddings.com`;
+      const custDocId = session.email
+        ? `CUST-${session.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_')}`
+        : `CUST-${session.userId || session.phone}`;
+
       const custUser: CustomerUser = {
+        id: custDocId,
         name: session.name,
         userId: session.userId,
         phone: session.phone,
-        email: session.email || `${session.userId || 'user'}@framluweddings.com`,
+        email: custEmail,
         address: session.address || session.place || 'Kayamkulam',
         place: session.place || 'Kayamkulam',
         registeredAt: session.loggedInAt,
+        lastLoginAt: session.loggedInAt,
+        loginCount: 1,
+        role: 'customer',
+        status: 'active',
       };
       setCustomerUser(custUser);
       setStudioUser(null);
-      setActiveLead((prev) => ({
-        ...prev,
-        name: session.name,
-        phone: session.phone,
-        email: custUser.email,
-        place: session.place || 'Kayamkulam',
-        address: session.address || prev.address || '',
-      }));
+
+      // Immediately register in customerUsers state and local cache for instant Admin visibility
+      setCustomerUsers((prev) => {
+        const cleanEmail = custEmail.toLowerCase().trim();
+        const exists = prev.some((u) => (cleanEmail && u.email?.toLowerCase().trim() === cleanEmail) || u.id === custDocId);
+        const updated = exists
+          ? prev.map((u) => ((cleanEmail && u.email?.toLowerCase().trim() === cleanEmail) || u.id === custDocId ? { ...u, ...custUser, loginCount: (u.loginCount || 1) + 1 } : u))
+          : [custUser, ...prev];
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_customer_users_cache', JSON.stringify(updated));
+          localStorage.setItem('framlu_wedding_user', JSON.stringify(custUser));
+          if (custEmail) localStorage.setItem(`cust_user_${cleanEmail}`, JSON.stringify(custUser));
+        }
+        return updated;
+      });
+
+      // Instantly save/update customer in Cloud Firestore for immediate Admin visibility
+      saveCustomerUserToCloud(custUser).catch((err) => console.warn('Instant cloud customer save error:', err));
+
+      // Check if this customer already has existing saved leads by verified email or phone
+      const cleanEmail = custEmail.trim().toLowerCase();
+      const cleanPhone = (session.phone || '').replace(/\D/g, '').slice(-10);
+
+      const existingLead = leads.find((l) => {
+        const lEmail = (l.ownerEmail || l.createdByEmail || l.userEmail || l.email || '').trim().toLowerCase();
+        const lPhone = (l.phone || l.userPhone || l.createdByPhone || '').replace(/\D/g, '').slice(-10);
+        const emailMatch = cleanEmail && !cleanEmail.startsWith('user@') && lEmail === cleanEmail;
+        const phoneMatch = cleanPhone && cleanPhone.length >= 10 && lPhone === cleanPhone;
+        return emailMatch || phoneMatch;
+      });
+
+      if (existingLead) {
+        // Restore customer's existing saved events and quote
+        setActiveLead(existingLead);
+        if (existingLead.side) setSide(existingLead.side);
+        if (existingLead.groomEvents) setGroomEvents(existingLead.groomEvents);
+        if (existingLead.brideEvents) setBrideEvents(existingLead.brideEvents);
+        if (existingLead.deliverables) setDeliverables(existingLead.deliverables);
+        if (existingLead.selectedServices) setSelectedOtherServices(existingLead.selectedServices);
+        if (existingLead.couponCode) {
+          const found = coupons.find((c) => c.code === existingLead.couponCode);
+          if (found) setAppliedCoupon(found);
+        }
+      } else {
+        // BRAND NEW CUSTOMER DASHBOARD: Completely reset quote customizer so they NEVER inherit previous user's items!
+        setGroomEvents(buildInitialEvents());
+        setBrideEvents(buildInitialEvents());
+        setDeliverables(ZERO_DELIVERABLES);
+        setSelectedOtherServices([]);
+        setActivePackageBoard(null);
+        setAppliedCoupon(null);
+        setEditingLeadId(null);
+        setSide('both');
+
+        setActiveLead({
+          name: session.name,
+          ownerName: session.name,
+          email: custEmail,
+          ownerEmail: custEmail,
+          createdByName: session.name,
+          createdByEmail: custEmail,
+          phone: session.phone,
+          userId: session.userId,
+          userEmail: custEmail,
+          userPhone: session.phone,
+          address: session.address || session.place || 'Kerala',
+          place: session.place || 'കായംകുളം',
+          weddingDate: '',
+          venueLocation: '',
+        });
+      }
     } else {
+      const stEmail = session.email || 'studio@framluweddings.com';
+      const stDocId = session.email
+        ? `STUDIO-${session.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_')}`
+        : `STUDIO-${session.phone}`;
+
       const stUser: StudioUser = {
+        id: stDocId,
         studioName: session.studioName || session.name,
         ownerName: session.name,
         phone: session.phone,
-        email: session.email || 'studio@framluweddings.com',
+        email: stEmail,
         address: session.address || session.place || 'Kerala, India',
         place: session.place || 'Kayamkulam',
         registeredAt: session.loggedInAt,
+        lastLoginAt: session.loggedInAt,
+        loginCount: 1,
+        role: 'studio',
+        status: 'active',
       };
       setStudioUser(stUser);
       setCustomerUser(null);
-      setActiveLead((prev) => ({
-        ...prev,
-        studioBranding: stUser,
-      }));
+
+      // Immediately register in studioPartners state and local cache for instant Admin visibility
+      setStudioPartners((prev) => {
+        const cleanEmail = stEmail.toLowerCase().trim();
+        const exists = prev.some((p) => (cleanEmail && p.email?.toLowerCase().trim() === cleanEmail) || p.id === stDocId);
+        const updated = exists
+          ? prev.map((p) => ((cleanEmail && p.email?.toLowerCase().trim() === cleanEmail) || p.id === stDocId ? { ...p, ...stUser, loginCount: (p.loginCount || 1) + 1 } : p))
+          : [stUser, ...prev];
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_studio_partners_cache', JSON.stringify(updated));
+          localStorage.setItem('framlu_studio_partner', JSON.stringify(stUser));
+          localStorage.setItem('wedding_studio_user', JSON.stringify(stUser));
+          if (stEmail) localStorage.setItem(`wedding_studio_${cleanEmail}`, JSON.stringify(stUser));
+        }
+        return updated;
+      });
+
+      // Instantly save/update studio partner in Cloud Firestore for immediate Admin visibility
+      saveStudioPartnerToCloud(stUser).catch((err) => console.warn('Instant cloud studio partner save error:', err));
+
+      // Check if existing lead exists for this studio
+      const cleanEmail = stEmail.trim().toLowerCase();
+      const cleanPhone = (session.phone || '').replace(/\D/g, '').slice(-10);
+
+      const existingStudioLead = leads.find((l) => {
+        const lEmail = (l.ownerEmail || l.createdByEmail || l.studioBranding?.email || '').trim().toLowerCase();
+        const lPhone = (l.phone || l.studioBranding?.phone || '').replace(/\D/g, '').slice(-10);
+        const emailMatch = cleanEmail && !cleanEmail.startsWith('studio@') && lEmail === cleanEmail;
+        const phoneMatch = cleanPhone && cleanPhone.length >= 10 && lPhone === cleanPhone;
+        return emailMatch || phoneMatch;
+      });
+
+      if (existingStudioLead) {
+        setActiveLead(existingStudioLead);
+        if (existingStudioLead.side) setSide(existingStudioLead.side);
+        if (existingStudioLead.groomEvents) setGroomEvents(existingStudioLead.groomEvents);
+        if (existingStudioLead.brideEvents) setBrideEvents(existingStudioLead.brideEvents);
+        if (existingStudioLead.deliverables) setDeliverables(existingStudioLead.deliverables);
+        if (existingStudioLead.selectedServices) setSelectedOtherServices(existingStudioLead.selectedServices);
+      } else {
+        // Reset builder for new studio
+        setGroomEvents(buildInitialEvents());
+        setBrideEvents(buildInitialEvents());
+        setDeliverables(ZERO_DELIVERABLES);
+        setSelectedOtherServices([]);
+        setActivePackageBoard(null);
+        setAppliedCoupon(null);
+        setEditingLeadId(null);
+        setSide('both');
+
+        setActiveLead({
+          name: session.studioName || session.name,
+          ownerName: session.name,
+          email: stEmail,
+          ownerEmail: stEmail,
+          createdByName: session.name,
+          createdByEmail: stEmail,
+          phone: session.phone,
+          userId: session.userId,
+          userEmail: stEmail,
+          userPhone: session.phone,
+          address: session.address || session.place || 'Kerala',
+          place: session.place || 'Kayamkulam',
+          weddingDate: '',
+          venueLocation: '',
+          studioBranding: stUser,
+        });
+      }
     }
-    setIsRoleAuthModalOpen(false);
   };
 
-  const handleRoleLogout = () => {
+  const handleRoleLogout = (targetUserIdOrEmail?: unknown) => {
+    // Only check target when explicitly supplied as a non-empty string (e.g. from Admin user deletion)
+    if (typeof targetUserIdOrEmail === 'string' && targetUserIdOrEmail.trim() && userSession) {
+      const target = targetUserIdOrEmail.trim().toLowerCase();
+      const currId = (userSession.userId || '').toLowerCase();
+      const currEmail = (userSession.email || '').toLowerCase();
+      const currPhone = (userSession.phone || '').replace(/\D/g, '').slice(-10);
+      const targetPhone = target.replace(/\D/g, '').slice(-10);
+      const isTarget =
+        target === currId ||
+        (currEmail && target === currEmail) ||
+        (targetPhone && currPhone && targetPhone === currPhone);
+      if (!isTarget) {
+        return;
+      }
+    }
+
+    try {
+      if (auth) {
+        signOut(auth).catch(() => {});
+      }
+    } catch (e) {}
+
     setUserSession(null);
     setCustomerUser(null);
     setStudioUser(null);
+    setIsCustomerDashboardOpen(false);
     setActiveLead({
       name: '',
       phone: '',
@@ -1325,10 +1604,139 @@ export default function Home() {
       localStorage.removeItem('lumina_wedding_user');
       localStorage.removeItem('framlu_studio_partner');
       localStorage.removeItem('wedding_studio_user');
-      localStorage.removeItem('framlu_wedding_leads');
-      localStorage.removeItem('lumina_wedding_leads');
     }
-    setIsRoleAuthModalOpen(true);
+    setIsRoleAuthModalOpen(false);
+  };
+
+  // Handler for Profile Settings update & save
+  const handleUpdateProfileSession = async (updatedSession: AppUserSession) => {
+    setUserSession(updatedSession);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('lfb_user_session', JSON.stringify(updatedSession));
+    }
+
+    if (updatedSession.role === 'customer') {
+      const custDocId = updatedSession.email
+        ? `CUST-${updatedSession.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_')}`
+        : `CUST-${updatedSession.userId}`;
+
+      const updatedCust: CustomerUser = {
+        id: custDocId,
+        name: updatedSession.name,
+        userId: updatedSession.userId,
+        phone: updatedSession.phone,
+        email: updatedSession.email || `${updatedSession.userId}@framluweddings.com`,
+        address: updatedSession.address || updatedSession.place || 'Kayamkulam',
+        place: updatedSession.place || 'കായംകുളം',
+        registeredAt: customerUser?.registeredAt || updatedSession.loggedInAt,
+        lastLoginAt: new Date().toISOString(),
+        role: 'customer',
+        status: 'active',
+      };
+      setCustomerUser(updatedCust);
+
+      // Immediately sync into customerUsers state & localStorage cache
+      setCustomerUsers((prev) => {
+        const cleanEmail = (updatedCust.email || '').toLowerCase().trim();
+        const exists = prev.some((u) => (cleanEmail && u.email?.toLowerCase().trim() === cleanEmail) || u.id === custDocId);
+        const updated = exists ? prev.map((u) => ((cleanEmail && u.email?.toLowerCase().trim() === cleanEmail) || u.id === custDocId ? { ...u, ...updatedCust } : u)) : [updatedCust, ...prev];
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_customer_users_cache', JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('framlu_wedding_user', JSON.stringify(updatedCust));
+        if (updatedCust.email) localStorage.setItem(`cust_user_${updatedCust.email.toLowerCase().trim()}`, JSON.stringify(updatedCust));
+      }
+      saveCustomerUserToCloud(updatedCust).catch((err) => console.warn('Background save customer user on profile edit:', err));
+    } else {
+      const stDocId = updatedSession.email
+        ? `STUDIO-${updatedSession.email.toLowerCase().trim().replace(/[^a-z0-9]/g, '_')}`
+        : `STUDIO-${updatedSession.phone}`;
+
+      const updatedStudio: StudioUser = {
+        id: stDocId,
+        studioName: updatedSession.studioName || updatedSession.name,
+        ownerName: updatedSession.name,
+        phone: updatedSession.phone,
+        email: updatedSession.email || 'studio@framluweddings.com',
+        address: updatedSession.address || updatedSession.place || 'Kerala',
+        place: updatedSession.place || 'Kayamkulam',
+        registeredAt: studioUser?.registeredAt || updatedSession.loggedInAt,
+        lastLoginAt: new Date().toISOString(),
+        role: 'studio',
+        status: 'active',
+      };
+      setStudioUser(updatedStudio);
+
+      // Immediately sync into studioPartners state & localStorage cache
+      setStudioPartners((prev) => {
+        const cleanEmail = (updatedStudio.email || '').toLowerCase().trim();
+        const exists = prev.some((p) => (cleanEmail && p.email?.toLowerCase().trim() === cleanEmail) || p.id === stDocId);
+        const updated = exists ? prev.map((p) => ((cleanEmail && p.email?.toLowerCase().trim() === cleanEmail) || p.id === stDocId ? { ...p, ...updatedStudio } : p)) : [updatedStudio, ...prev];
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_studio_partners_cache', JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('framlu_studio_partner', JSON.stringify(updatedStudio));
+        localStorage.setItem('wedding_studio_user', JSON.stringify(updatedStudio));
+        if (updatedStudio.email) localStorage.setItem(`wedding_studio_${updatedStudio.email.toLowerCase().trim()}`, JSON.stringify(updatedStudio));
+      }
+      saveStudioPartnerToCloud(updatedStudio).catch((err) => console.warn('Background save studio partner on profile edit:', err));
+    }
+
+    // Also update activeLead template
+    setActiveLead((prev) => ({
+      ...prev,
+      name: updatedSession.name,
+      ownerName: updatedSession.name,
+      phone: updatedSession.phone,
+      email: updatedSession.email || prev.email,
+      address: updatedSession.address || prev.address,
+      place: updatedSession.place || prev.place,
+      studioBranding: updatedSession.role === 'studio' ? {
+        studioName: updatedSession.studioName || updatedSession.name,
+        ownerName: updatedSession.name,
+        phone: updatedSession.phone,
+        email: updatedSession.email || '',
+        address: updatedSession.address || 'Kerala',
+        place: updatedSession.place || 'Kayamkulam',
+      } : undefined,
+    }));
+
+    // Also update any saved quotes owned by this user so new name/phone/address propagates
+    const userEmail = updatedSession.email?.toLowerCase().trim();
+    const userPhone = updatedSession.phone?.replace(/\D/g, '').slice(-10);
+    if (userEmail || userPhone) {
+      setLeads((prev) => {
+        const updated = prev.map((l) => {
+          const lEmail = (l.ownerEmail || l.createdByEmail || l.userEmail || l.email || '').toLowerCase().trim();
+          const lPhone = (l.phone || l.userPhone || l.createdByPhone || '').replace(/\D/g, '').slice(-10);
+          const isMatch = (userEmail && lEmail === userEmail) || (userPhone && lPhone === userPhone);
+          if (!isMatch) return l;
+          return {
+            ...l,
+            ownerName: updatedSession.name,
+            createdByName: updatedSession.name,
+            name: l.name || updatedSession.name,
+            phone: updatedSession.phone,
+            address: updatedSession.address || l.address,
+            place: updatedSession.place || l.place,
+            lastEditedAt: new Date().toISOString(),
+          };
+        });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('framlu_wedding_leads', JSON.stringify(updated));
+          localStorage.setItem('lumina_wedding_leads', JSON.stringify(updated));
+        }
+        return updated;
+      });
+    }
   };
 
   const handleDeleteLead = async (leadIdOrQuote: string | CustomerLead) => {
@@ -1355,6 +1763,14 @@ export default function Home() {
       setIsRoleAuthModalOpen(true);
       return;
     }
+    setEditingLeadId(null);
+    setActiveLead((prev) => ({
+      ...prev,
+      id: '',
+      createdAt: new Date().toISOString(),
+      weddingDate: prefilledDate || prev.weddingDate || '',
+      status: 'New',
+    }));
     if (serviceType) {
       setQuoteServiceType(serviceType);
       if (serviceType === 'wedding') {
@@ -1615,9 +2031,18 @@ export default function Home() {
       <SidebarNav
         currentTab={currentNavTab}
         onSelectTab={(tab) => {
-          if (tab === 'new_quote' && !userSession) {
-            setIsRoleAuthModalOpen(true);
-            return;
+          if (tab === 'new_quote') {
+            if (!userSession) {
+              setIsRoleAuthModalOpen(true);
+              return;
+            }
+            setEditingLeadId(null);
+            setActiveLead((prev) => ({
+              ...prev,
+              id: '',
+              createdAt: new Date().toISOString(),
+              status: 'New',
+            }));
           }
           setCurrentNavTab(tab);
           if (typeof window !== 'undefined') {
@@ -1626,7 +2051,7 @@ export default function Home() {
         }}
         userSession={userSession}
         onOpenAuthModal={() => setIsRoleAuthModalOpen(true)}
-        onLogout={handleRoleLogout}
+        onLogout={() => handleRoleLogout()}
         studioContact={studioContact}
         language={language}
         onToggleLanguage={handleToggleLanguage}
@@ -2191,6 +2616,13 @@ export default function Home() {
                     source: isStudio ? 'studio' : 'customer',
                     createdBy: isStudio ? 'studio' : 'customer',
                     studioBranding: studioUser || undefined,
+                    userId: userSession?.userId || customerUser?.userId,
+                    userEmail: userSession?.email || customerUser?.email || prev.email,
+                    userPhone: userSession?.phone || customerUser?.phone || prev.phone,
+                    createdByUserId: userSession?.userId,
+                    createdByEmail: userSession?.email,
+                    createdByPhone: userSession?.phone,
+                    createdByRole: userSession?.role || (isStudio ? 'studio' : 'customer'),
                   }));
                   setIsLeadModalOpen(true);
                 }}
@@ -2323,6 +2755,13 @@ export default function Home() {
                   source: isStudio ? 'studio' : 'customer',
                   createdBy: isStudio ? 'studio' : 'customer',
                   studioBranding: studioUser || undefined,
+                  userId: userSession?.userId || customerUser?.userId,
+                  userEmail: userSession?.email || customerUser?.email || prev.email,
+                  userPhone: userSession?.phone || customerUser?.phone || prev.phone,
+                  createdByUserId: userSession?.userId,
+                  createdByEmail: userSession?.email,
+                  createdByPhone: userSession?.phone,
+                  createdByRole: userSession?.role || (isStudio ? 'studio' : 'customer'),
                 }));
                 setIsLeadModalOpen(true);
               }}
@@ -2431,6 +2870,10 @@ export default function Home() {
               setCategories={setCategories}
               leads={leads}
               setLeads={setLeads}
+              customerUsers={customerUsers}
+              setCustomerUsers={setCustomerUsers}
+              studioPartners={studioPartners}
+              setStudioPartners={setStudioPartners}
               galleryProjects={galleryProjects}
               setGalleryProjects={setGalleryProjects}
               coupons={coupons}
@@ -2438,7 +2881,24 @@ export default function Home() {
               photoshoots={photoshoots}
               setPhotoshoots={setPhotoshoots}
               onCloseAdmin={() => setCurrentNavTab('dashboard')}
+              onLogoutUser={handleRoleLogout}
               language={language}
+            />
+          </main>
+        )}
+
+        {/* TAB: PROFILE SETTINGS */}
+        {currentNavTab === 'profile' && (
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 w-full">
+            <ProfileSettingsView
+              userSession={userSession}
+              customerUser={customerUser}
+              studioUser={studioUser}
+              language={language}
+              onUpdateSession={handleUpdateProfileSession}
+              onOpenAuthModal={() => setIsRoleAuthModalOpen(true)}
+              userQuotesCount={userQuotes.length}
+              onViewQuotes={() => setCurrentNavTab('quotes')}
             />
           </main>
         )}
@@ -2510,7 +2970,7 @@ export default function Home() {
           onBrowseServices={() => {
             setCurrentNavTab('services');
           }}
-          onCustomerLogout={handleRoleLogout}
+          onCustomerLogout={() => handleRoleLogout()}
         />
       )}
 
@@ -2522,11 +2982,12 @@ export default function Home() {
         language={language}
       />
 
-      {/* Branded PDF Quotation View Modal */}
+      {/* Branded PDF Quotation View Modal (mounts in background when WhatsApp share is open for identical PDF generation) */}
       <PdfQuotationView
         isOpen={isPdfModalOpen}
+        isBackgroundRenderer={!isPdfModalOpen && isWhatsAppShareModalOpen}
         onClose={() => setIsPdfModalOpen(false)}
-        lead={activeLead}
+        lead={selectedShareLead && !isPdfModalOpen ? selectedShareLead : activeLead}
         side={side}
         calculation={calculation}
         studioContact={studioContact}

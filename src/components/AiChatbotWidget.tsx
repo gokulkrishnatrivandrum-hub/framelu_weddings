@@ -44,8 +44,8 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({
     id: 'msg-welcome',
     sender: 'assistant',
     text: isMl
-      ? `നമസ്കാരം! 🙏 ഞാൻ ഫ്രെയിം ലൂ വെഡ്ഡിംഗ്സിന്റെ AI വെഡ്ഡിംഗ് അസിസ്റ്റന്റാണ്.\n\nനിങ്ങളുടെ വിവാഹ ഫോട്ടോഗ്രാഫി പാക്കേജ്, ഡ്രോൺ, കാൻവേര ആൽബം, ബജറ്റ് കണക്കുകൂട്ടൽ എന്നിവയെക്കുറിച്ചുള്ള ഏത് സംശയങ്ങളും എന്നോട് ചോദിക്കാം!`
-      : `Hello! 🙏 I am Framlu Weddings' AI Wedding Assistant.\n\nFeel free to ask me anything about Kerala wedding photography packages, drone cinematography, album choices, or customized budgets!`,
+      ? `നമസ്കാരം! 🙏 ഞാൻ Framelu wedding Company-യുടെ AI വെഡ്ഡിംഗ് അസിസ്റ്റന്റാണ്.\n\nനിങ്ങളുടെ വിവാഹ ഫോട്ടോഗ്രാഫി പാക്കേജ്, ഡ്രോൺ, കാൻവേര ആൽബം, ബജറ്റ് കണക്കുകൂട്ടൽ എന്നിവയെക്കുറിച്ചുള്ള ഏത് സംശയങ്ങളും എന്നോട് ചോദിക്കാം!`
+      : `Hello! 🙏 I am Framelu wedding Company's AI Wedding Assistant.\n\nFeel free to ask me anything about Kerala wedding photography packages, drone cinematography, album choices, or customized budgets!`,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   };
 
@@ -152,13 +152,13 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({
           {/* Tooltip Tag */}
           <div className="hidden sm:flex items-center gap-1.5 bg-stone-900 text-white text-xs font-bold py-1.5 px-3 rounded-full shadow-lg border border-purple-500/30 group-hover:scale-105 transition">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>{isMl ? 'ചോദിക്കൂ എഐ-യോട് ✨' : 'Ask Framlu AI ✨'}</span>
+            <span>{isMl ? 'ചോദിക്കൂ എഐ-യോട് ✨' : 'Framelu AI ✨'}</span>
           </div>
 
           <button
             onClick={() => setIsOpen(true)}
             className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-amber-600 text-white shadow-xl shadow-purple-600/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all cursor-pointer border-2 border-white/50"
-            title="Open Framlu AI Assistant"
+            title="Open Framelu AI Assistant"
           >
             <Sparkles className="w-6 h-6 animate-pulse" />
           </button>
@@ -176,11 +176,11 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <h4 className="font-black text-sm text-white">Framlu AI Assistant</h4>
+                  <h4 className="font-black text-sm text-white">Framelu AI Assistant</h4>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 </div>
                 <p className="text-[10px] text-purple-100 font-medium">
-                  {isMl ? 'കേരള വെഡ്ഡിംഗ് സ്മാർട്ട് ഗൈഡ്' : 'Smart Kerala Wedding Guide'}
+                  {isMl ? 'കേരള വെഡ്ഡിംഗ് സ്മാർട്ട് ഗൈഡ്' : 'Framelu wedding Company'}
                 </p>
               </div>
             </div>
@@ -218,7 +218,7 @@ export const AiChatbotWidget: React.FC<AiChatbotWidgetProps> = ({
               <span>{isMl ? '⚡ എഐ ബജറ്റ് ടൂൾ' : '⚡ AI Budget Tool'}</span>
             </button>
             <a
-              href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hi Framlu Weddings, I need assistance with wedding photography packages')}`}
+              href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent('Hi Framelu wedding Company, I need assistance with wedding photography packages')}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-emerald-700 hover:text-emerald-900 transition"

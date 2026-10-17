@@ -183,7 +183,7 @@ export const AiPlannerModal: React.FC<AiPlannerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-black text-lg sm:text-xl tracking-tight text-white">
-                  Framlu AI Planner & Scheduler
+                  Framelu wedding Company AI Planner
                 </h3>
                 <span className="bg-amber-400 text-stone-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
                   Gemini AI
